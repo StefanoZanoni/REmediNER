@@ -37,13 +37,23 @@ def iob_tagging(text, drug, effect, twt):
     start_e, end_e = re.search(re.escape(effect), text).span()
     span_list_e = twt.span_tokenize(text)
 
+    entities = ['Drug', 'Effect']
+
     iob_list = []
+    i = 0
     for (start1, end1), (start2, end2) in zip(span_list_d, span_list_e):
         iob_tag = 'O'
         if start1 == start_d or start2 == start_e:
             iob_tag = 'B'
-        elif (start_d < start1 or start_e < start2) and (end_d <= end1 or end_e <= end2):
+            if start1 == start_d:
+                i = 0
+            else:
+                i = 1
+        elif (start_d < start1 and end1 <= end_d) or (start_e < start2 and end2 <= end_e):
             iob_tag = 'I'
+
+        if iob_tag != 'O':
+            iob_tag += '-{}'.format(entities[i])
 
         iob_list.append(iob_tag)
 
@@ -51,9 +61,6 @@ def iob_tagging(text, drug, effect, twt):
 
 
 def get_row_iob(row, twt):
-    global i
-    print(i)
-    i += 1
     return iob_tagging(row.text, row.drug, row.effect, twt)
 
 
