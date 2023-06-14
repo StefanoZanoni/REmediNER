@@ -1,0 +1,5 @@
+pandas~=1.5.3
+datasets~=2.12.0
+scikit-learn~=1.2.2
+transformers~=4.29.2
+nltk~=3.8.1
