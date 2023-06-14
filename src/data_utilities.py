@@ -1,5 +1,6 @@
 import re
-import string
+import ast
+import pandas as pd
 
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
@@ -7,15 +8,16 @@ from sklearn.model_selection import KFold
 from transformers import AutoTokenizer
 from nltk.tokenize import TreebankWordTokenizer
 
-import pandas as pd
+i = 0
 
 
 def load_data():  # Noisy data? Duplicates?
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    dataframe = dataframe.drop(columns='indexes')
-    dataframe.drop_duplicates(inplace=True)  # Drop duplicates
+    dataframe['indexes'] = dataframe['indexes'].astype(str)
+    dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
+    dataframe['indexes'] = dataframe['indexes'].apply(lambda x: ast.literal_eval(x))
     return dataframe
 
 
@@ -23,8 +25,10 @@ def pre_process_texts(data):
     drugs = data['drug'].unique().tolist()
     effects = data['effect'].unique().tolist()
     exception_words = drugs + effects
-    pattern = r"(?<![a-zA-Z])'s(?![a-zA-Z])|\b\d+(?:-\w+)*(?:'\w+)?\b|[^\w\s]".format("|".join(exception_words))
+    # remove all punctuations except genitive s
+    pattern = r'(?!\b\w+\b)[^\w\s\']'.format("|".join(exception_words))
     data['text'] = data['text'].str.replace(pattern, ' ')
+    data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' '), data['effect'].str.replace(pattern, ' ')
 
 
 def iob_tagging(text, drug, effect, twt):
@@ -47,6 +51,9 @@ def iob_tagging(text, drug, effect, twt):
 
 
 def get_row_iob(row, twt):
+    global i
+    print(i)
+    i += 1
     return iob_tagging(row.text, row.drug, row.effect, twt)
 
 
