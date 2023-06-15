@@ -1,11 +1,12 @@
+import copy
 import re
 import ast
 import pandas as pd
+import tensorflow as tf
 
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
-from transformers import AutoTokenizer
 from nltk.tokenize import TreebankWordTokenizer
 
 i = 0
@@ -14,6 +15,7 @@ i = 0
 def load_data():  # Noisy data? Duplicates?
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
+    dataframe = dataframe[:2]
     dataframe['indexes'] = dataframe['indexes'].astype(str)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
@@ -26,9 +28,95 @@ def pre_process_texts(data):
     effects = data['effect'].unique().tolist()
     exception_words = drugs + effects
     # remove all punctuations except genitive s
-    pattern = r'(?!\b\w+\b)[^\w\s\']'.format("|".join(exception_words))
-    data['text'] = data['text'].str.replace(pattern, ' ')
-    data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' '), data['effect'].str.replace(pattern, ' ')
+    pattern = r'(?!\b\w+\b)[^\w\s\']'.format(
+        "|".join(exception_words))  # PROBLEM: digits are tokenized and seperated 2.27 -> 2 . 2 7
+    data['text'] = data['text'].str.replace(pattern, ' ', regex=True)
+    data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' ', regex=True), \
+        data['effect'].str.replace(pattern, ' ', regex=True)
+    data['num_tokens_text'] = data['text'].apply(lambda x: len(str(x).split()))
+
+
+def get_labels_id(data):
+    labels = data['iob'].unique()
+    entities = set()
+    for l in labels:
+        for el in l.split():
+            entities.add(el)
+    id_label = {i: label for i, label in enumerate(entities)}
+    label_id = {label: i for i, label in enumerate(entities)}
+
+    return id_label, label_id, len(entities)
+
+
+def tokenize_text(data, tokenizer):
+    texts = data['text'].to_list()
+    labels = data['iob'].to_list()
+
+    temp_tokenized_texts = []
+    temp_tokenized_labels = []
+
+    for text, text_labels in zip(texts, labels):
+        tokenized_text = []
+        tokenized_label = []
+        for word, labels in zip(text.split(), text_labels.split()):
+            tokenized_word = tokenizer.tokenize(word)
+            n_subwords = len(tokenized_word)
+            tokenized_text.append(tokenized_word)
+            tokenized_label.append([labels] * n_subwords)
+
+        # tokenized_text = list(map(' '.join, tokenized_text))
+        # tokenized_label = list(map(' '.join, tokenized_label))
+        temp_tokenized_texts.append(tokenized_text)
+        temp_tokenized_labels.append(tokenized_label)
+
+    tokenized_texts = []
+    tokenized_labels = []
+
+    for text in temp_tokenized_texts:
+        tokenized_text = []
+        for word in text:
+            for token in word:
+                tokenized_text.append(token)
+        tokenized_texts.append(tokenized_text)
+
+    for text_labels in temp_tokenized_labels:
+        tokenized_text_labels = []
+        for labels in text_labels:
+            for label in labels:
+                tokenized_text_labels.append(label)
+        tokenized_labels.append(tokenized_text_labels)
+
+    return tokenized_texts, tokenized_labels
+
+
+def get_bert_outputs(data):
+    return list(zip(data.drug, data.effect))
+
+
+def get_bert_inputs(tokenized_texts, tokenized_labels, max_len, tokenizer, label_id):
+    bert_inputs = []
+
+    for text, labels in zip(tokenized_texts, tokenized_labels):
+        tokenized_text = ["[CLS]"] + text + ["[SEP]"]
+        labels = copy.copy(labels)
+        labels.insert(0, "O")
+        labels.insert(len(tokenized_text)-1, "O")
+        # padding
+        if len(tokenized_text) < max_len:
+            tokenized_text = tokenized_text + ['[PAD]' for _ in range(max_len - len(tokenized_text))]
+            labels = labels + ["O" for _ in range(max_len - len(labels))]
+
+        attention_mask = [1 if tok != '[PAD]' else 0 for tok in tokenized_text]
+        ids = tokenizer.convert_tokens_to_ids(tokenized_text)
+        label_ids = [label_id[label] for label in labels]
+
+        input = (tf.constant(ids, dtype=tf.int32),
+                 tf.constant(attention_mask, dtype=tf.int32),
+                 tf.constant(label_ids, dtype=tf.int32))
+
+        bert_inputs.append(input)
+
+    return bert_inputs
 
 
 def iob_tagging(text, drug, effect, twt):
@@ -61,6 +149,9 @@ def iob_tagging(text, drug, effect, twt):
 
 
 def get_row_iob(row, twt):
+    # global i
+    # print(i)
+    # i += 1
     return iob_tagging(row.text, row.drug, row.effect, twt)
 
 
@@ -69,25 +160,10 @@ def compute_iob(data):
     data['iob'] = data.apply(lambda row: get_row_iob(row, twt), axis=1)
 
 
-def split_train_test(data):
-    train_data, test_data = train_test_split(data, test_size=0.1, shuffle=True, random_state=0)
-    return train_data, test_data
+def split_train_test(inputs, outputs):
+    return train_test_split(inputs, outputs, test_size=0.1, shuffle=True, random_state=0)
 
 
-def k_fold(data, n_splits=10):
-    kf = KFold(n_splits=n_splits)
-    return kf.split(data)
-
-
-def get_input_output(data):
-    input = data['text'].to_frame()
-    output = data[['drug', 'effect']].apply(tuple, axis=1).to_frame()
-
-    return input, output
-
-
-def pre_processing(data, bert_model):
-    tokenizer = AutoTokenizer.from_pretrained(bert_model)
-    data = data['text'].to_list()
-    encoded_input = tokenizer(data, padding=True, truncation=True, return_tensors='tf')
-    return encoded_input
+def k_fold(data_x, data_y, n_splits=10):
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=0)
+    return kf.split(data_x, data_y)
