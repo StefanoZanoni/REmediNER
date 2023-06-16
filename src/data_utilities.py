@@ -15,7 +15,7 @@ i = 0
 def load_data():  # Noisy data? Duplicates?
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    dataframe = dataframe[:2]
+    # dataframe = dataframe[:2] # for debugging
     dataframe['indexes'] = dataframe['indexes'].astype(str)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
@@ -29,7 +29,7 @@ def pre_process_texts(data):
     exception_words = drugs + effects
     # remove all punctuations except genitive s
     pattern = r'(?!\b\w+\b)[^\w\s\']'.format(
-        "|".join(exception_words))  # PROBLEM: digits are tokenized and seperated 2.27 -> 2 . 2 7
+        "|".join(exception_words))  # PROBLEM: digits are tokenized and seperated 2.27 -> 2 27
     data['text'] = data['text'].str.replace(pattern, ' ', regex=True)
     data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' ', regex=True), \
         data['effect'].str.replace(pattern, ' ', regex=True)
@@ -90,17 +90,26 @@ def tokenize_text(data, tokenizer):
 
 
 def get_bert_outputs(data):
-    return list(zip(data.drug, data.effect))
+    unique_drugs = data['drug'].unique()
+    unique_effects = data['effect'].unique()
+    drug_class = {label: i for i, label in enumerate(unique_drugs)}
+    effect_class = {label: i for i, label in enumerate(unique_effects)}
+    drug_classes = [drug_class[drug] for drug in data['drug']]
+    effect_classes = [effect_class[effect] for effect in data['effect']]
+
+    return [drug_classes, effect_classes], len(unique_drugs), len(unique_effects)
 
 
-def get_bert_inputs(tokenized_texts, tokenized_labels, max_len, tokenizer, label_id):
-    bert_inputs = []
+def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_len=128):
+    bert_ids = []
+    bert_masks = []
+    bert_labels = []
 
     for text, labels in zip(tokenized_texts, tokenized_labels):
         tokenized_text = ["[CLS]"] + text + ["[SEP]"]
         labels = copy.copy(labels)
         labels.insert(0, "O")
-        labels.insert(len(tokenized_text)-1, "O")
+        labels.insert(len(tokenized_text) - 1, "O")
         # padding
         if len(tokenized_text) < max_len:
             tokenized_text = tokenized_text + ['[PAD]' for _ in range(max_len - len(tokenized_text))]
@@ -110,13 +119,11 @@ def get_bert_inputs(tokenized_texts, tokenized_labels, max_len, tokenizer, label
         ids = tokenizer.convert_tokens_to_ids(tokenized_text)
         label_ids = [label_id[label] for label in labels]
 
-        input = (tf.constant(ids, dtype=tf.int32),
-                 tf.constant(attention_mask, dtype=tf.int32),
-                 tf.constant(label_ids, dtype=tf.int32))
+        bert_ids.append(ids)
+        bert_masks.append(attention_mask)
+        bert_labels.append(label_ids)
 
-        bert_inputs.append(input)
-
-    return bert_inputs
+    return [bert_ids, bert_masks, bert_labels]
 
 
 def iob_tagging(text, drug, effect, twt):
@@ -160,10 +167,59 @@ def compute_iob(data):
     data['iob'] = data.apply(lambda row: get_row_iob(row, twt), axis=1)
 
 
+def compute_eager_tensor(data, text_len, num_texts, is_output=False):
+    if not is_output:
+        data = [item for sublist in data for item in sublist]
+    data = tf.constant(data, dtype=tf.int32)
+    data = tf.reshape(data, shape=(num_texts, text_len))
+
+    return data
+
+
+def split(input, output=None):
+    if output is None:
+        return train_test_split(input, test_size=0.1, shuffle=True, random_state=0)
+    else:
+        return train_test_split(input, output, test_size=0.1, shuffle=True, random_state=0)
+
+
 def split_train_test(inputs, outputs):
-    return train_test_split(inputs, outputs, test_size=0.1, shuffle=True, random_state=0)
+    text_len = len(inputs[0][0])
+
+    train_ids, test_ids, train_out_d, test_out_d = split(inputs[0], outputs[0])
+    num_texts = len(train_ids)
+    train_ids = compute_eager_tensor(train_ids, text_len, num_texts)
+    train_out_d = compute_eager_tensor(train_out_d, 1, num_texts, is_output=True)
+    num_texts = len(test_ids)
+    test_ids = compute_eager_tensor(test_ids, text_len, num_texts)
+    test_out_d = compute_eager_tensor(test_out_d, 1, num_texts, is_output=True)
+
+    _, _, train_out_e, test_out_e = split(inputs[0], outputs[1])
+    num_texts = len(train_ids)
+    train_out_e = compute_eager_tensor(train_out_e, 1, num_texts, is_output=True)
+    num_texts = len(test_ids)
+    test_out_e = compute_eager_tensor(test_out_e, 1, num_texts, is_output=True)
+
+    train_masks, test_masks = split(inputs[0])
+    num_texts = len(train_masks)
+    train_masks = compute_eager_tensor(train_masks, text_len, num_texts)
+    num_texts = len(test_masks)
+    test_masks = compute_eager_tensor(test_masks, text_len, num_texts)
+
+    train_labels, test_labels = split(inputs[0])
+    num_texts = len(train_labels)
+    train_labels = compute_eager_tensor(train_labels, text_len, num_texts)
+    num_texts = len(test_labels)
+    test_labels = compute_eager_tensor(test_labels, text_len, num_texts)
+
+    train_in = [train_ids, train_masks, train_labels]
+    test_in = [test_ids, test_masks, test_labels]
+    train_out = [train_out_d, train_out_e]
+    test_out = [test_out_d, test_out_e]
+
+    return train_in, test_in, train_out, test_out
 
 
-def k_fold(data_x, data_y, n_splits=10):
+def k_fold(data_x, n_splits=10):
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=0)
-    return kf.split(data_x, data_y)
+    return kf.split(data_x)

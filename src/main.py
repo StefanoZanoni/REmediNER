@@ -14,11 +14,10 @@ def main():
     compute_iob(data)
     id_label, label_id, len_labels = get_labels_id(data)
     tokenized_texts, tokenized_labels = tokenize_text(data, tokenizer)
-    max_len = data['num_tokens_text'].max()
-    inputs = get_bert_inputs(tokenized_texts, tokenized_labels, max_len, tokenizer, label_id)
-    outputs = get_bert_outputs(data)
+    inputs = get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id)
+    outputs, num_drugs, num_effects = get_bert_outputs(data)
     train_in, test_in, train_out, test_out = split_train_test(inputs, outputs)
-    model = create_model(bert_model, len_labels, id_label, label_id, max_len)
+    model = create_model(bert_model, len_labels, id_label, label_id, num_drugs, num_effects)
     training(train_in, train_out, model)
 
 
