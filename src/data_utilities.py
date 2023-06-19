@@ -64,8 +64,6 @@ def tokenize_text(data, tokenizer):
             tokenized_text.append(tokenized_word)
             tokenized_label.append([labels] * n_subwords)
 
-        # tokenized_text = list(map(' '.join, tokenized_text))
-        # tokenized_label = list(map(' '.join, tokenized_label))
         temp_tokenized_texts.append(tokenized_text)
         temp_tokenized_labels.append(tokenized_label)
 
@@ -156,9 +154,6 @@ def iob_tagging(text, drug, effect, twt):
 
 
 def get_row_iob(row, twt):
-    # global i
-    # print(i)
-    # i += 1
     return iob_tagging(row.text, row.drug, row.effect, twt)
 
 

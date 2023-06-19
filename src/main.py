@@ -2,10 +2,13 @@ from src.data_utilities import load_data, split_train_test, tokenize_text, \
     compute_iob, pre_process_texts, get_labels_id, get_bert_inputs, get_bert_outputs
 from src.model import create_model
 from src.training import training
-from transformers import BertTokenizer
+from transformers import BertTokenizerFast
+
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 bert_model = 'bert-base-uncased'
-tokenizer = BertTokenizer.from_pretrained(bert_model)
+tokenizer = BertTokenizerFast.from_pretrained(bert_model)
 
 
 def main():
