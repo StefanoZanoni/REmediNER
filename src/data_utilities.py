@@ -2,14 +2,12 @@ import copy
 import re
 import ast
 import pandas as pd
-import tensorflow as tf
+import torch
 
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
 from nltk.tokenize import TreebankWordTokenizer
-
-i = 0
 
 
 def load_data():  # Noisy data? Duplicates?
@@ -165,8 +163,8 @@ def compute_iob(data):
 def compute_eager_tensor(data, text_len, num_texts, is_output=False):
     if not is_output:
         data = [item for sublist in data for item in sublist]
-    data = tf.constant(data, dtype=tf.int32)
-    data = tf.reshape(data, shape=(num_texts, text_len))
+    data = torch.cuda.IntTensor(data)
+    data = torch.reshape(data, shape=(num_texts, text_len))
 
     return data
 

@@ -4,10 +4,7 @@ from src.model import create_model
 from src.training import training
 from transformers import BertTokenizerFast
 
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-bert_model = 'bert-base-uncased'
+bert_model = 'emilyalsentzer/Bio_ClinicalBERT'
 tokenizer = BertTokenizerFast.from_pretrained(bert_model)
 
 
