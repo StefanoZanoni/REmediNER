@@ -32,7 +32,8 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
     tokenized_texts_test, tokenized_labels_test = tokenize_text(test_in, test_out_ner, tokenizer)
     inputs_train = get_bert_inputs(tokenized_texts_train, tokenized_labels_train, tokenizer, label_id)
     # prepare the data to multi-gpu training
-    inputs_train = DataLoader(inputs_train, batch_size=batch_size, shuffle=False, sampler=DistributedSampler(inputs_train))
+    inputs_train = \
+        DataLoader(inputs_train, batch_size=batch_size, pin_memory=True, shuffle=False, sampler=DistributedSampler(inputs_train))
 
     inputs_test = get_bert_inputs(tokenized_texts_test, tokenized_labels_test, tokenizer, label_id)
     train_out_re = get_re_outputs(train_out_re)
@@ -43,6 +44,7 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
     scheduler = ner.get_scheduler(ner_training_steps)
     ner_trainer = TrainerNer(ner, inputs_train, optimizer, scheduler, rank, save_every)
     ner_trainer.train_ner(total_epochs)
+
     destroy_process_group()
 
 
@@ -51,4 +53,4 @@ if __name__ == '__main__':
 
     save_every = int(sys.argv[1])
     world_size = torch.cuda.device_count()
-    mp.spawn(main, args=(world_size, save_every), nprocs=world_size)
+    mp.spawn(main, args=(world_size, save_every,), nprocs=world_size)

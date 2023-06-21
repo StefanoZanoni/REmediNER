@@ -58,6 +58,7 @@ class TrainerNer:
 
     def _run_epoch_ner(self, epoch):
         b_sz = len(next(iter(self.train_data))[0])
+        self.train_data.sampler.set_epoch(epoch)
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(self.train_data)}")
         loss_batch = 0
         for source in self.train_data:
