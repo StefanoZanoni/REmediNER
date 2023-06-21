@@ -16,6 +16,18 @@ bert_model = 'emilyalsentzer/Bio_ClinicalBERT'
 tokenizer = BertTokenizerFast.from_pretrained(bert_model)
 
 
+def ddp_setup(rank: int, world_size: int):
+    """
+    Args:
+    rank: Unique identifier of each process
+    world_size: Total number of processes
+    """
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+
+
 def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
 
     ddp_setup(rank, world_size)
@@ -33,7 +45,8 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
     inputs_train = get_bert_inputs(tokenized_texts_train, tokenized_labels_train, tokenizer, label_id)
     # prepare the data to multi-gpu training
     inputs_train = \
-        DataLoader(inputs_train, batch_size=batch_size, pin_memory=True, shuffle=False, sampler=DistributedSampler(inputs_train))
+        DataLoader(inputs_train, batch_size=batch_size, pin_memory=True,
+                   shuffle=False, sampler=DistributedSampler(inputs_train))
 
     inputs_test = get_bert_inputs(tokenized_texts_test, tokenized_labels_test, tokenizer, label_id)
     train_out_re = get_re_outputs(train_out_re)

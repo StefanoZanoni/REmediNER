@@ -48,9 +48,9 @@ class TrainerNer:
         self.scheduler = scheduler
         self.save_evey = save_every
 
-    def _run_batch_ner(self, source):
+    def _run_batch_ner(self, ids, masks, labels):
         self.optimizer.zero_grad()
-        loss = self.model(source)
+        loss = self.model(ids, masks, labels)
         loss.backward()
         self.optimizer.step()
         self.scheduler.step()
@@ -61,9 +61,11 @@ class TrainerNer:
         self.train_data.sampler.set_epoch(epoch)
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(self.train_data)}")
         loss_batch = 0
-        for source in self.train_data:
-            source = source.to(self.gpu_id)
-            loss_batch += self._run_batch_ner(source)
+        for ids, masks, labels in self.train_data:
+            ids = ids.to(self.gpu_id)
+            masks = masks.to(self.gpu_id)
+            labels = labels.to(self.gpu_id)
+            loss_batch += self._run_batch_ner(ids, masks, labels)
         return loss_batch / len(self.train_data)
 
     def _save_checkpoint(self, epoch):

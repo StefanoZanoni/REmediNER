@@ -2,10 +2,12 @@ import torch.nn
 from transformers import AutoModelForTokenClassification
 from transformers import get_linear_schedule_with_warmup
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 def model_ner(model_name, len_labels, id_label, label_id):
     return AutoModelForTokenClassification.from_pretrained(model_name, num_labels=len_labels,
-                                                           id2label=id_label, label2id=label_id)
+                                                           id2label=id_label, label2id=label_id).to(device)
 
 
 class NerModel(torch.nn.Module):
@@ -33,5 +35,5 @@ class NerModel(torch.nn.Module):
 
     def forward(self, ids, mask, labels):
         bert_output = self.ner(ids, attention_mask=mask, labels=labels, return_dict=False)
-        loss = bert_output.loss
+        loss = bert_output[0]
         return loss

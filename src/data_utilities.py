@@ -125,15 +125,11 @@ def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_
         bert_masks.append(attention_mask)
         bert_labels.append(label_ids)
 
-    bert_ids = torch.tensor(bert_ids, dtype=torch.int)
-    bert_masks = torch.tensor(bert_masks, dtype=torch.int)
-    bert_labels = torch.tensor(bert_labels, dtype=torch.int)
+    bert_ids = torch.tensor(bert_ids, dtype=torch.long)
+    bert_masks = torch.tensor(bert_masks, dtype=torch.long)
+    bert_labels = torch.tensor(bert_labels, dtype=torch.long)
 
-    return {
-        'ids': bert_ids,
-        'masks': bert_masks,
-        'labels': bert_labels
-    }
+    return list(zip(bert_ids, bert_masks, bert_labels))
 
 
 def iob_tagging(text, drug, effect, twt):
