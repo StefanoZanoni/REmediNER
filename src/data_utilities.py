@@ -34,6 +34,12 @@ def pre_process_texts(data):
     data['num_tokens_text'] = data['text'].apply(lambda x: len(str(x).split()))
 
 
+def count_drug_effects(data):
+    unique_drugs = data['drug'].unique()
+    unique_effects = data['effect'].unique()
+
+    return len(unique_drugs), len(unique_effects)
+
 def get_labels_id(data):
     labels = data['iob'].unique()
     entities = set()
@@ -46,9 +52,9 @@ def get_labels_id(data):
     return id_label, label_id, len(entities)
 
 
-def tokenize_text(data, tokenizer):
-    texts = data['text'].to_list()
-    labels = data['iob'].to_list()
+def tokenize_text(texts, labels, tokenizer):
+    texts = texts['text'].to_list()
+    labels = labels['iob'].to_list()
 
     temp_tokenized_texts = []
     temp_tokenized_labels = []
@@ -85,7 +91,7 @@ def tokenize_text(data, tokenizer):
     return tokenized_texts, tokenized_labels
 
 
-def get_bert_outputs(data):
+def get_re_outputs(data):
     unique_drugs = data['drug'].unique()
     unique_effects = data['effect'].unique()
     drug_class = {label: i for i, label in enumerate(unique_drugs)}
@@ -93,7 +99,7 @@ def get_bert_outputs(data):
     drug_classes = [drug_class[drug] for drug in data['drug']]
     effect_classes = [effect_class[effect] for effect in data['effect']]
 
-    return [drug_classes, effect_classes], len(unique_drugs), len(unique_effects)
+    return [drug_classes, effect_classes]
 
 
 def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_len=128):
@@ -119,7 +125,15 @@ def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_
         bert_masks.append(attention_mask)
         bert_labels.append(label_ids)
 
-    return [bert_ids, bert_masks, bert_labels]
+    bert_ids = torch.tensor(bert_ids, dtype=torch.int)
+    bert_masks = torch.tensor(bert_masks, dtype=torch.int)
+    bert_labels = torch.tensor(bert_labels, dtype=torch.int)
+
+    return {
+        'ids': bert_ids,
+        'masks': bert_masks,
+        'labels': bert_labels
+    }
 
 
 def iob_tagging(text, drug, effect, twt):
@@ -160,57 +174,16 @@ def compute_iob(data):
     data['iob'] = data.apply(lambda row: get_row_iob(row, twt), axis=1)
 
 
-def compute_eager_tensor(data, text_len, num_texts, is_output=False):
-    if not is_output:
-        data = [item for sublist in data for item in sublist]
-    data = torch.cuda.IntTensor(data)
-    data = torch.reshape(data, shape=(num_texts, text_len))
+def split_train_test(data):
+    input = data['text'].to_frame()
+    output = data[['iob', 'drug', 'effect']]
+    train_in, test_in, train_out, test_out = train_test_split(input, output, test_size=0.1, random_state=0)
+    train_out_ner = train_out['iob'].to_frame()
+    train_out_re = train_out[['drug', 'effect']]
+    test_out_ner = test_out['iob'].to_frame()
+    test_out_re = test_out[['drug', 'effect']]
 
-    return data
-
-
-def split(input, output=None):
-    if output is None:
-        return train_test_split(input, test_size=0.1, shuffle=True, random_state=0)
-    else:
-        return train_test_split(input, output, test_size=0.1, shuffle=True, random_state=0)
-
-
-def split_train_test(inputs, outputs):
-    text_len = len(inputs[0][0])
-
-    train_ids, test_ids, train_out_d, test_out_d = split(inputs[0], outputs[0])
-    num_texts = len(train_ids)
-    train_ids = compute_eager_tensor(train_ids, text_len, num_texts)
-    train_out_d = compute_eager_tensor(train_out_d, 1, num_texts, is_output=True)
-    num_texts = len(test_ids)
-    test_ids = compute_eager_tensor(test_ids, text_len, num_texts)
-    test_out_d = compute_eager_tensor(test_out_d, 1, num_texts, is_output=True)
-
-    _, _, train_out_e, test_out_e = split(inputs[0], outputs[1])
-    num_texts = len(train_ids)
-    train_out_e = compute_eager_tensor(train_out_e, 1, num_texts, is_output=True)
-    num_texts = len(test_ids)
-    test_out_e = compute_eager_tensor(test_out_e, 1, num_texts, is_output=True)
-
-    train_masks, test_masks = split(inputs[0])
-    num_texts = len(train_masks)
-    train_masks = compute_eager_tensor(train_masks, text_len, num_texts)
-    num_texts = len(test_masks)
-    test_masks = compute_eager_tensor(test_masks, text_len, num_texts)
-
-    train_labels, test_labels = split(inputs[0])
-    num_texts = len(train_labels)
-    train_labels = compute_eager_tensor(train_labels, text_len, num_texts)
-    num_texts = len(test_labels)
-    test_labels = compute_eager_tensor(test_labels, text_len, num_texts)
-
-    train_in = [train_ids, train_masks, train_labels]
-    test_in = [test_ids, test_masks, test_labels]
-    train_out = [train_out_d, train_out_e]
-    test_out = [test_out_d, test_out_e]
-
-    return train_in, test_in, train_out, test_out
+    return train_in, test_in, train_out_ner, train_out_re, test_out_ner, test_out_re
 
 
 def k_fold(data_x, n_splits=10):
