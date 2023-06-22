@@ -1,6 +1,8 @@
 import time
 
 import torch
+from torch.distributed import all_reduce
+from torch.distributed import ReduceOp
 
 from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -37,7 +39,8 @@ class TrainerNer:
                  epochs: int,
                  batch_size: int,
                  gpu_id: int,
-                 save_every: int
+                 save_every: int,
+                 world_size: int
                  ) -> None:
         self.gpu_id = gpu_id
         self.bert_model = bert_model  # DDP(model, device_ids=[gpu_id])
@@ -45,6 +48,7 @@ class TrainerNer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.save_evey = save_every
+        self.world_size = world_size
 
     def _run_epoch_ner(self, train_data, epoch, model, optimizer, scheduler):
         b_sz = len(next(iter(train_data))[0])
@@ -71,7 +75,7 @@ class TrainerNer:
                 save_checkpoint(epoch, model)
 
         print("--- training time in seconds: %s ---" % (time.time() - start_time))
-        return epoch_loss_means
+        return all_reduce(epoch_loss_means) / self.world_size
 
     def _validation_ner(self, val_data, model):
         loss_sum = 0

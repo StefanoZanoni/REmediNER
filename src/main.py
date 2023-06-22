@@ -1,20 +1,20 @@
 import os
+import transformers
 
 import torch
 import torch.multiprocessing as mp
 from torch.distributed import init_process_group, destroy_process_group
-from torch.utils.data import DataLoader, TensorDataset
-from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 
 from src.data_utilities import load_data, split_train_test, tokenize_text, \
     compute_iob, pre_process_texts, get_labels_id, get_bert_inputs, get_re_outputs, count_drug_effects
-from src.model_ner import NerModel
 from src.training import TrainerNer
 
 bert_model = 'emilyalsentzer/Bio_ClinicalBERT'
 tokenizer = BertTokenizerFast.from_pretrained(bert_model)
 
+transformers.utils.logging.set_verbosity_error()
 
 def ddp_setup(rank: int, world_size: int):
     """
@@ -58,7 +58,7 @@ def main(rank, world_size, save_every, total_epochs=1, batch_size=32):
                   'len_labels': len_labels,
                   'id_label': id_label,
                   'label_id': label_id}
-    ner_trainer = TrainerNer(bert_model, inputs_train, total_epochs, batch_size, rank, save_every)
+    ner_trainer = TrainerNer(bert_model, inputs_train, total_epochs, batch_size, rank, save_every, world_size)
     ner_trainer.kfold_cross_validation(k=2)
 
     destroy_process_group()
