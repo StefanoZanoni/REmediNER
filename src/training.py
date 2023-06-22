@@ -17,7 +17,7 @@ def save_checkpoint(epoch, model):
 
 def run_batch_ner(ids, masks, labels, model, optimizer, scheduler):
     optimizer.zero_grad()
-    loss = model(ids, masks, labels)
+    loss, _, _ = model(ids, masks, labels)
     loss.backward()
     optimizer.step()
     scheduler.step()
@@ -79,7 +79,7 @@ class TrainerNer:
             ids.to(self.gpu_id)
             masks.to(self.gpu_id)
             labels.to(self.gpu_id)
-            loss = model(ids, masks, labels)
+            loss, _, _ = model(ids, masks, labels)
             loss_sum += loss.item()
 
         return loss_sum / len(val_data)

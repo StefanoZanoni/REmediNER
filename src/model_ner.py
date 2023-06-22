@@ -16,7 +16,7 @@ class NerModel(torch.nn.Module):
         super(NerModel, self).__init__()
 
         self.ner = model_ner(model_name, len_labels, id_label, label_id)
-        self.ner_output = torch.nn.Softmax(dim=-1)
+        self.entities = torch.nn.Softmax(dim=-1)
 
     def get_optimizer(self):
         optimizer = torch.optim.AdamW(NerModel.parameters(self),
@@ -34,6 +34,13 @@ class NerModel(torch.nn.Module):
         return scheduler
 
     def forward(self, ids, mask, labels):
-        bert_output = self.ner(ids, attention_mask=mask, labels=labels, return_dict=False)
+        bert_output = self.ner(ids, attention_mask=mask, labels=labels, return_dict=False, output_hidden_states=True)
         loss = bert_output[0]
-        return loss
+        logits = bert_output[1]
+        entities_vector = self.entities(logits)
+        hidden_states = bert_output[2]
+        num_hidden_states = len(hidden_states)
+        last_4_hidden_states = [hidden_states[num_hidden_states - 1 - 1], hidden_states[num_hidden_states - 1 - 2],
+                                hidden_states[num_hidden_states - 1 - 3], hidden_states[num_hidden_states - 1 - 4]]
+        entities_context = torch.concat(last_4_hidden_states, dim=-1)
+        return loss, entities_vector, entities_context
