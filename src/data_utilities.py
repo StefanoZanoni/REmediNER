@@ -129,7 +129,7 @@ def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_
     bert_masks = torch.tensor(bert_masks, dtype=torch.long)
     bert_labels = torch.tensor(bert_labels, dtype=torch.long)
 
-    return list(zip(bert_ids, bert_masks, bert_labels))
+    return [bert_ids, bert_masks, bert_labels]
 
 
 def iob_tagging(text, drug, effect, twt):
@@ -180,8 +180,3 @@ def split_train_test(data):
     test_out_re = test_out[['drug', 'effect']]
 
     return train_in, test_in, train_out_ner, train_out_re, test_out_ner, test_out_re
-
-
-def k_fold(data_x, n_splits=10):
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=0)
-    return kf.split(data_x)

@@ -3,7 +3,7 @@ import os
 import torch
 import torch.multiprocessing as mp
 from torch.distributed import init_process_group, destroy_process_group
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 from transformers import BertTokenizerFast
 
@@ -28,7 +28,7 @@ def ddp_setup(rank: int, world_size: int):
     torch.cuda.set_device(rank)
 
 
-def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
+def main(rank, world_size, save_every, total_epochs=1, batch_size=32):
 
     ddp_setup(rank, world_size)
 
@@ -43,20 +43,23 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
     tokenized_texts_train, tokenized_labels_train = tokenize_text(train_in, train_out_ner, tokenizer)
     tokenized_texts_test, tokenized_labels_test = tokenize_text(test_in, test_out_ner, tokenizer)
     inputs_train = get_bert_inputs(tokenized_texts_train, tokenized_labels_train, tokenizer, label_id)
+    inputs_train = TensorDataset(inputs_train[0], inputs_train[1], inputs_train[2])
     # prepare the data to multi-gpu training
-    inputs_train = \
-        DataLoader(inputs_train, batch_size=batch_size, pin_memory=True,
-                   shuffle=False, sampler=DistributedSampler(inputs_train))
+    # inputs_train = \
+    #     DataLoader(inputs_train, batch_size=batch_size, pin_memory=True,
+    #                shuffle=False, sampler=DistributedSampler(inputs_train))
 
     inputs_test = get_bert_inputs(tokenized_texts_test, tokenized_labels_test, tokenizer, label_id)
     train_out_re = get_re_outputs(train_out_re)
     test_out_re = get_re_outputs(test_out_re)
-    ner = NerModel(bert_model, len_labels, id_label, label_id)
-    optimizer = ner.get_optimizer()
-    ner_training_steps = total_epochs * len(inputs_train) / batch_size
-    scheduler = ner.get_scheduler(ner_training_steps)
-    ner_trainer = TrainerNer(ner, inputs_train, optimizer, scheduler, rank, save_every)
-    ner_trainer.train_ner(total_epochs)
+
+    global bert_model
+    bert_model = {'bert_model': bert_model,
+                  'len_labels': len_labels,
+                  'id_label': id_label,
+                  'label_id': label_id}
+    ner_trainer = TrainerNer(bert_model, inputs_train, total_epochs, batch_size, rank, save_every)
+    ner_trainer.kfold_cross_validation(k=2)
 
     destroy_process_group()
 
