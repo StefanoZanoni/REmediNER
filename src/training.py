@@ -46,13 +46,13 @@ class TrainerNer:
         loss.backward()
         optimizer.step()
         scheduler.step()
-        return torch.tensor(loss.item(), dtype=torch.float32)
+        return torch.tensor(loss.item(), dtype=torch.float32, device=self.gpu_id)
 
     def _run_epoch_ner(self, train_data, epoch, model, optimizer, scheduler):
         b_sz = len(next(iter(train_data))[0])
         train_data.sampler.set_epoch(epoch)
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_data)}")
-        loss_batch = torch.zeros(1, dtype=torch.float32)
+        loss_batch = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
         start_time = time.time()
         for ids, masks, labels in train_data:
             ids = ids.to(self.gpu_id)
@@ -64,7 +64,7 @@ class TrainerNer:
         return loss_batch / len(train_data)
 
     def train_ner(self, train_data, model, optimizer, scheduler):
-        epoch_loss_means = torch.empty(1, dtype=torch.float32)
+        epoch_loss_means = torch.empty(1, dtype=torch.float32, device=self.gpu_id)
         start_time = time.time()
         for epoch in range(self.epochs):
             temp = self._run_epoch_ner(train_data, epoch, model, optimizer, scheduler)
@@ -73,8 +73,7 @@ class TrainerNer:
                 save_checkpoint(epoch, model)
 
         print("--- training time in seconds: %s ---" % (time.time() - start_time))
-        all_reduce(epoch_loss_means)
-        return epoch_loss_means / self.world_size
+        return torch.sum(epoch_loss_means) / len(epoch_loss_means)
 
     def _validation_ner(self, val_data, model):
         loss_sum = 0
