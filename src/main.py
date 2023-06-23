@@ -16,6 +16,7 @@ tokenizer = BertTokenizerFast.from_pretrained(bert_model)
 
 transformers.utils.logging.set_verbosity_error()
 
+
 def ddp_setup(rank: int, world_size: int):
     """
     Args:
@@ -29,7 +30,6 @@ def ddp_setup(rank: int, world_size: int):
 
 
 def main(rank, world_size, save_every, total_epochs=1, batch_size=32):
-
     ddp_setup(rank, world_size)
 
     data = load_data()
