@@ -41,6 +41,7 @@ class TrainerNer:
         self.world_size = world_size
 
     def _run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
+        model.train()
         optimizer.zero_grad()
         loss, _, _ = model(ids, masks, labels)
         loss.backward()
@@ -73,9 +74,10 @@ class TrainerNer:
                 save_checkpoint(epoch, model)
 
         print("--- training time in seconds: %s ---" % (time.time() - start_time))
-        return torch.sum(epoch_loss_means) / len(epoch_loss_means)
+        return epoch_loss_means
 
     def _validation_ner(self, val_data, model):
+        model.eval()
         loss_sum = 0
         for ids, masks, labels in val_data:
             ids.to(self.gpu_id)
@@ -87,7 +89,7 @@ class TrainerNer:
         return loss_sum / len(val_data)
 
     def kfold_cross_validation(self, k):
-
+        torch.cuda.set_device(self.gpu_id)
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
 
         results = []
@@ -103,13 +105,17 @@ class TrainerNer:
                                       pin_memory=True,
                                       shuffle=False,
                                       num_workers=4 * self.world_size,
-                                      sampler=DistributedSampler(train_subsampler))
+                                      sampler=DistributedSampler(train_subsampler,
+                                                                 num_replicas=self.world_size,
+                                                                 rank=self.gpu_id))
             val_loader = DataLoader(self.train_data,
                                     batch_size=self.batch_size,
                                     pin_memory=True,
                                     shuffle=False,
                                     num_workers=4 * self.world_size,
-                                    sampler=DistributedSampler(val_subsampler))
+                                    sampler=DistributedSampler(val_subsampler,
+                                                               num_replicas=self.world_size,
+                                                               rank=self.gpu_id))
 
             bert_model = self.bert_model['bert_model']
             len_labels = self.bert_model['len_labels']
@@ -123,7 +129,7 @@ class TrainerNer:
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
 
-            self.train_ner(train_loader, model, optimizer, scheduler)
+            print(self.train_ner(train_loader, model, optimizer, scheduler))
             # Saving the model
             save_path = f'./model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
