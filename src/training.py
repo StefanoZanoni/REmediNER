@@ -2,7 +2,6 @@ import time
 
 import torch
 from torch.distributed import all_reduce
-from torch.distributed import ReduceOp
 
 from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -15,15 +14,6 @@ def save_checkpoint(epoch, model):
     ckp = model.module.state_dict()
     torch.save(ckp, "checkpoint.pt")
     print(f"Epoch {epoch} | Training checkpoint saved at checkpoint.pt")
-
-
-def run_batch_ner(ids, masks, labels, model, optimizer, scheduler):
-    optimizer.zero_grad()
-    loss, _, _ = model(ids, masks, labels)
-    loss.backward()
-    optimizer.step()
-    scheduler.step()
-    return loss.item()
 
 
 def reset_parameters(model):
@@ -50,32 +40,40 @@ class TrainerNer:
         self.save_evey = save_every
         self.world_size = world_size
 
+    def _run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
+        optimizer.zero_grad()
+        loss, _, _ = model(ids, masks, labels)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+        return torch.tensor(loss.item(), dtype=torch.float32, device=self.gpu_id)
+
     def _run_epoch_ner(self, train_data, epoch, model, optimizer, scheduler):
         b_sz = len(next(iter(train_data))[0])
         train_data.sampler.set_epoch(epoch)
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_data)}")
-        loss_batch = 0
+        loss_batch = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
         start_time = time.time()
         for ids, masks, labels in train_data:
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
-            loss_batch += run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
+            loss_batch += self._run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
 
         print("--- EPOCH time in seconds: %s ---" % (time.time() - start_time))
         return loss_batch / len(train_data)
 
     def train_ner(self, train_data, model, optimizer, scheduler):
-        epoch_loss_means = []
+        epoch_loss_means = torch.empty(1, dtype=torch.float32, device=self.gpu_id)
         start_time = time.time()
         for epoch in range(self.epochs):
-            epoch_loss_mean = self._run_epoch_ner(train_data, epoch, model, optimizer, scheduler)
-            epoch_loss_means.append(epoch_loss_mean)
+            temp = self._run_epoch_ner(train_data, epoch, model, optimizer, scheduler)
+            epoch_loss_means.cat([epoch_loss_means, temp], dim=0)
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
                 save_checkpoint(epoch, model)
 
         print("--- training time in seconds: %s ---" % (time.time() - start_time))
-        return all_reduce(epoch_loss_means) / self.world_size
+        return all_reduce(torch.tensor(epoch_loss_means, dtype=torch.float32)) / self.world_size
 
     def _validation_ner(self, val_data, model):
         loss_sum = 0
