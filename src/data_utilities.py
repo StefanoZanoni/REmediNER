@@ -24,12 +24,19 @@ def pre_process_texts(data):
     drugs = data['drug'].unique().tolist()
     effects = data['effect'].unique().tolist()
     exception_words = drugs + effects
-    # removes all punctuations except genitive s, retains decimal numbers and patterns like z=2.27
+
+    # removes all punctuations except genitive s, retains decimal numbers and patterns like 'z = 2.27'
     pattern = r'(?!(?:\b\w+\b|\d+(?:\.\d+)?|[a-zA-Z]=\d+(?:\.\d+)?))[^\w\s\'.=]'.format(
         "|".join(exception_words))
     data['text'] = data['text'].str.replace(pattern, ' ', regex=True)
     data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' ', regex=True), \
         data['effect'].str.replace(pattern, ' ', regex=True)
+
+    # remove with spaces in patterns like 'z = 2.27.' Works also for subsequent patterns
+    data['text'] = data['text'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
+    data['drug'], data['effect'] = data['drug'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True), \
+        data['effect'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
+
     data['num_tokens_text'] = data['text'].apply(lambda x: len(str(x).split()))
 
 
