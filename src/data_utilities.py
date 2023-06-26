@@ -24,9 +24,9 @@ def pre_process_texts(data):
     drugs = data['drug'].unique().tolist()
     effects = data['effect'].unique().tolist()
     exception_words = drugs + effects
-    # remove all punctuations except genitive s
-    pattern = r'(?!(?:\b\w+\b|\d+(?:\.\d+)?))[^\w\s\'.]'.format(
-        "|".join(exception_words))  # PROBLEM: digits are tokenized and seperated 2.27 -> 2 27
+    # removes all punctuations except genitive s, retains decimal numbers and patterns like z=2.27
+    pattern = r'(?!(?:\b\w+\b|\d+(?:\.\d+)?|[a-zA-Z]=\d+(?:\.\d+)?))[^\w\s\'.=]'.format(
+        "|".join(exception_words))
     data['text'] = data['text'].str.replace(pattern, ' ', regex=True)
     data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' ', regex=True), \
         data['effect'].str.replace(pattern, ' ', regex=True)
