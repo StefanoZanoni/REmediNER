@@ -104,7 +104,6 @@ class TrainerNer:
                                       batch_size=self.batch_size,
                                       pin_memory=True,
                                       shuffle=False,
-                                      num_workers=4 * self.world_size,
                                       sampler=DistributedSampler(train_subsampler,
                                                                  num_replicas=self.world_size,
                                                                  rank=self.gpu_id))
@@ -112,7 +111,6 @@ class TrainerNer:
                                     batch_size=self.batch_size,
                                     pin_memory=True,
                                     shuffle=False,
-                                    num_workers=4 * self.world_size,
                                     sampler=DistributedSampler(val_subsampler,
                                                                num_replicas=self.world_size,
                                                                rank=self.gpu_id))

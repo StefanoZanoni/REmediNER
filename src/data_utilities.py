@@ -6,7 +6,6 @@ import torch
 
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import KFold
 from nltk.tokenize import TreebankWordTokenizer
 
 
@@ -26,7 +25,7 @@ def pre_process_texts(data):
     effects = data['effect'].unique().tolist()
     exception_words = drugs + effects
     # remove all punctuations except genitive s
-    pattern = r'(?!\b\w+\b)[^\w\s\']'.format(
+    pattern = r'(?!(?:\b\w+\b|\d+(?:\.\d+)?))[^\w\s\'.]'.format(
         "|".join(exception_words))  # PROBLEM: digits are tokenized and seperated 2.27 -> 2 27
     data['text'] = data['text'].str.replace(pattern, ' ', regex=True)
     data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' ', regex=True), \
@@ -39,6 +38,7 @@ def count_drug_effects(data):
     unique_effects = data['effect'].unique()
 
     return len(unique_drugs), len(unique_effects)
+
 
 def get_labels_id(data):
     labels = data['iob'].unique()
