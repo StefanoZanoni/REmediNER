@@ -7,8 +7,8 @@ from torch.distributed import init_process_group, destroy_process_group
 from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 
-from src.data_utilities import load_data, split_train_test, tokenize_text, \
-    compute_iob, pre_process_texts, get_labels_id, get_bert_inputs, get_re_outputs, count_drug_effects
+from src.data_utilities import load_data, split_train_test, tokenize_text, compute_iob, pre_process_texts, \
+    get_labels_id, get_bert_inputs, get_re_outputs, count_drug_effects, compute_pos, compute_context_mean_length
 from src.training import TrainerNer
 
 bert_model = 'emilyalsentzer/Bio_ClinicalBERT'
@@ -34,6 +34,8 @@ def main(rank, world_size, save_every, total_epochs=1, batch_size=32):
 
     data = load_data()
     pre_process_texts(data)
+    compute_pos(data)
+    context_mean_length = compute_context_mean_length(data)
     compute_iob(data)
     id_label, label_id, len_labels = get_labels_id(data)
     num_drugs, num_effects = count_drug_effects(data)
@@ -44,10 +46,6 @@ def main(rank, world_size, save_every, total_epochs=1, batch_size=32):
     tokenized_texts_test, tokenized_labels_test = tokenize_text(test_in, test_out_ner, tokenizer)
     inputs_train = get_bert_inputs(tokenized_texts_train, tokenized_labels_train, tokenizer, label_id)
     inputs_train = TensorDataset(inputs_train[0], inputs_train[1], inputs_train[2])
-    # prepare the data to multi-gpu training
-    # inputs_train = \
-    #     DataLoader(inputs_train, batch_size=batch_size, pin_memory=True,
-    #                shuffle=False, sampler=DistributedSampler(inputs_train))
 
     inputs_test = get_bert_inputs(tokenized_texts_test, tokenized_labels_test, tokenizer, label_id)
     train_out_re = get_re_outputs(train_out_re)

@@ -3,6 +3,7 @@ import re
 import ast
 import pandas as pd
 import torch
+import spacy
 
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
@@ -25,19 +26,76 @@ def pre_process_texts(data):
     effects = data['effect'].unique().tolist()
     exception_words = drugs + effects
 
-    # removes all punctuations except genitive s, retains decimal numbers and patterns like 'z = 2.27'
-    pattern = r'(?!(?:\b\w+\b|\d+(?:\.\d+)?|[a-zA-Z]=\d+(?:\.\d+)?))[^\w\s\'.=]'.format(
+    data['text'] = data['text'].str.strip()
+    data['drug'] = data['drug'].str.strip()
+    data['effect'] = data['effect'].str.strip()
+
+    # removes all punctuations, retains decimal numbers and patterns like 'z = 2.27'
+    pattern = r"('s\b)|(?!(?:\b\w+\b|\d+(?:\.\d+)?|[a-zA-Z]=\d+(?:\.\d+)?))([^\w\s\'.=]|(?<!\d)\.(?!\d))".format(
         "|".join(exception_words))
     data['text'] = data['text'].str.replace(pattern, ' ', regex=True)
-    data['drug'], data['effect'] = data['drug'].str.replace(pattern, ' ', regex=True), \
-        data['effect'].str.replace(pattern, ' ', regex=True)
+    data['drug'] = data['drug'].str.replace(pattern, ' ', regex=True)
+    data['effect'] = data['effect'].str.replace(pattern, ' ', regex=True)
+
+    # remove the remaining quotes
+    data['text'] = data['text'].str.replace("'", '', regex=True)
+    data['drug'] = data['drug'].str.replace("'", '', regex=True)
+    data['effect'] = data['effect'].str.replace("'", '', regex=True)
+
+    # remove all '.', also at the end of phrase if the last word is a number
+    data['text'] = data['text'].str.replace(r'\.\s*$', '', regex=True)
+    data['drug'] = data['drug'].str.replace(r'\.\s*$', '', regex=True)
+    data['effect'] = data['effect'].str.replace(r'\.\s*$', '', regex=True)
+
+    # remove double space
+    data['text'] = data['text'].str.replace(r'\s+', ' ', regex=True)
+    data['drug'] = data['drug'].str.replace(r'\s+', ' ', regex=True)
+    data['effect'] = data['effect'].str.replace(r'\s+', ' ', regex=True)
 
     # remove with spaces in patterns like 'z = 2.27.' Works also for subsequent patterns
     data['text'] = data['text'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
-    data['drug'], data['effect'] = data['drug'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True), \
-        data['effect'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
+    data['drug'] = data['drug'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
+    data['effect'] = data['effect'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
 
     data['num_tokens_text'] = data['text'].apply(lambda x: len(str(x).split()))
+
+
+def compute_pos(data):
+    nlp = spacy.load("en_core_web_sm")
+    pos_tags = []
+    for text in data['text']:
+        doc = nlp(text)
+        pos = [token.pos_ for token in doc]
+        pos_tags.append(pos)
+
+    data['pos_tags'] = pos_tags
+
+
+def find_sub_list(sl, l):
+    sll = len(sl)
+    for ind in (i for i, e in enumerate(l) if e == sl[0]):
+        if l[ind:ind + sll] == sl:
+            return ind, ind + sll - 1
+
+
+def compute_context_mean_length(data):
+    function_word = ['AUX', 'CONJ', 'CCONJ', 'INTJ', 'PUNCT', 'SCONJ', 'X', 'SPACE']
+    context_length = 0
+
+    for index, row in data.iterrows():
+        text = row['text'].split()
+        drug = row['drug'].split()
+        drug_indexes = find_sub_list(drug, text)
+        effect = row['effect'].split()
+        effect_indexes = find_sub_list(effect, text)
+        if drug_indexes[0] < effect_indexes[0]:
+            context_pos = row['pos_tags'][drug_indexes[1] + 1:effect_indexes[0]]
+        else:
+            context_pos = row['pos_tags'][effect_indexes[1] + 1:drug_indexes[0]]
+        context_pos = [pos for pos in context_pos if pos not in function_word]
+        context_length += len(context_pos)
+
+    return (context_length / len(data)).__ceil__()
 
 
 def count_drug_effects(data):
