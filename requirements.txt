@@ -5,3 +5,4 @@ transformers~=4.30.2
 nltk~=3.8.1
 torch~=2.0.1
 tqdm~=4.65.0
+spacy~=3.5.3
