@@ -52,10 +52,10 @@ class ReModel(torch.nn.Module):
     def __init__(self, context_mean_length, entity_embeddings_length):
         super(ReModel, self).__init__()
 
-        context_pool_dim = (context_mean_length, 768 * 4 / context_mean_length)
+        context_pool_dim = (context_mean_length, (entity_embeddings_length * 4 / context_mean_length).__ceil__())
         linear_input_dim = (entity_embeddings_length * 2) + (context_pool_dim[0] * context_pool_dim[1])
 
-        self.avg_pooling = torch.nn.AdaptiveAvgPool2d(context_pool_dim) # we chose Average pooling - check maxpooling
+        self.avg_pooling = torch.nn.AdaptiveAvgPool2d(context_pool_dim)  # we chose Average pooling - check maxpooling
         self.flatten = torch.nn.Flatten()
         self.linear = torch.nn.Linear(in_features=linear_input_dim, out_features=1)
         self.sigmoid = torch.nn.Sigmoid()
@@ -82,5 +82,3 @@ class ReModel(torch.nn.Module):
             outputs.append((pair[0], pair[1], out_re))
 
         return outputs
-
-#  o o o o d d o o e o e e

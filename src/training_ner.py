@@ -60,7 +60,6 @@ class TrainerNer:
             labels = labels.to(self.gpu_id)
             loss_batch += self._run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
 
-        print("--- EPOCH time in seconds: %s ---" % (time.time() - start_time))
         return loss_batch / b_sz
 
     def train_ner(self, train_data, model, optimizer, scheduler):

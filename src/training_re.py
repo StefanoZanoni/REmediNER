@@ -53,7 +53,7 @@ class TrainerRe:
         optimizer.zero_grad()
         _, entities_vector, entities_context = model_ner(ids, masks, labels)
         predicted_output = model_re(entities_vector, entities_context, label_id)
-        loss = torch.nn.BCELoss(predicted_output[2], train_output[2])
+        loss = torch.nn.BCELoss(predicted_output[2], train_output)
         loss.backward()
         optimizer.step()
         return predicted_output, loss
@@ -66,16 +66,16 @@ class TrainerRe:
         loss_batch = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
         start_time = time.time()
         batch_re_output = []
-        for ids, masks, labels in train_in:
+        for (ids, masks, labels), out in zip(train_in, train_output):
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
-            re_output, loss = self._run_batch_re(ids, masks, labels, label_id, train_output,
+            out = out.to(self.gpu_id)
+            re_output, loss = self._run_batch_re(ids, masks, labels, label_id, out,
                                                  model_re, model_ner, optimizer)
             loss_batch += loss
             batch_re_output.append(re_output)
 
-        print("--- EPOCH time in seconds: %s ---" % (time.time() - start_time))
         return batch_re_output, loss_batch / b_sz
 
     def train_re(self, train_in, train_out, label_id, model_re, model_ner, optimizer):
