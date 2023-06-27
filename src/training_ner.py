@@ -1,7 +1,6 @@
 import time
 
 import torch
-from torch.distributed import all_reduce
 
 from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -62,7 +61,7 @@ class TrainerNer:
             loss_batch += self._run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
 
         print("--- EPOCH time in seconds: %s ---" % (time.time() - start_time))
-        return loss_batch / len(train_data)
+        return loss_batch / b_sz
 
     def train_ner(self, train_data, model, optimizer, scheduler):
         epoch_loss_means = torch.empty(1, dtype=torch.float32, device=self.gpu_id)
@@ -89,7 +88,6 @@ class TrainerNer:
         return loss_sum / len(val_data)
 
     def kfold_cross_validation(self, k):
-        torch.cuda.set_device(self.gpu_id)
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
 
         results = []
@@ -139,3 +137,5 @@ class TrainerNer:
         print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k} FOLDS')
         print('--------------------------------')
         print(f'{sum(results) / len(results)}')
+
+        return model

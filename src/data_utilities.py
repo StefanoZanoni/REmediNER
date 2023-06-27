@@ -157,14 +157,13 @@ def tokenize_text(texts, labels, tokenizer):
 
 
 def get_re_outputs(data):
-    unique_drugs = data['drug'].unique()
-    unique_effects = data['effect'].unique()
-    drug_class = {label: i for i, label in enumerate(unique_drugs)}
-    effect_class = {label: i for i, label in enumerate(unique_effects)}
-    drug_classes = [drug_class[drug] for drug in data['drug']]
-    effect_classes = [effect_class[effect] for effect in data['effect']]
+    drugs = data['drug'].to_list()
+    effects = data['effect'].to_list()
+    relations = [1] * len(drugs)
 
-    return [drug_classes, effect_classes]
+    relations = torch.tensor(relations, dtype=torch.int32)
+
+    return drugs, effects, relations
 
 
 def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_len=128):
