@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 def compute_all_entities_pairs(entities):
@@ -15,28 +16,33 @@ def compute_all_entities_pairs(entities):
 def get_entities_and_context_span(entities_vector, context_vector, label_id):
     entities_spans = []
     end = None
-    for i in range(entities_vector):
-        if entities_vector[i] == label_id['B-Drug'] or entities_vector[i] == label_id['B-Effect']:
+    i = 0
+    for el in entities_vector.tolist():
+        if el == label_id['B-Drug'] or el == label_id['B-Effect']:
             if end is not None:
                 entities_spans.append((start, end, e_type))
                 end = None
-            if entities_vector[i] == label_id['B-Drug']:
+            if el == label_id['B-Drug']:
                 e_type = 0
             else:
                 e_type = 1
             start = i
-        elif entities_vector[i] == label_id['I-Drug'] or entities_vector[i] == label_id['I-Effect']:
+        elif el == label_id['I-Drug'] or el == label_id['I-Effect']:
             end = i
-        elif entities_vector[i] == label_id['O'] and end is not None:
+        elif el == label_id['O'] and end is not None:
             entities_spans.append((start, end, e_type))
             end = None
+        i += 1
 
     if end is not None:
         entities_spans.append((start, end, e_type))
 
-    context_start = entities_spans[0][0]
-    context_end = entities_spans[len(entities_spans) - 1][1]
-    context_span = context_vector[context_start:context_end + 1]
+    if entities_spans:
+        context_start = entities_spans[0][0]
+        context_end = entities_spans[len(entities_spans) - 1][1]
+        context_span = context_vector[context_start:context_end + 1]
+    else:
+        context_span = torch.empty(size=(1, 1, 1), dtype=torch.float32)
 
     entities = []
     for span in entities_spans:
@@ -52,7 +58,7 @@ class ReModel(torch.nn.Module):
     def __init__(self, context_mean_length, entity_embeddings_length):
         super(ReModel, self).__init__()
 
-        context_pool_dim = (context_mean_length, (entity_embeddings_length * 4 / context_mean_length).__ceil__())
+        context_pool_dim = (int(context_mean_length), int(np.ceil(entity_embeddings_length * 4 / context_mean_length)))
         linear_input_dim = (entity_embeddings_length * 2) + (context_pool_dim[0] * context_pool_dim[1])
 
         self.avg_pooling = torch.nn.AdaptiveAvgPool2d(context_pool_dim)  # we chose Average pooling - check maxpooling

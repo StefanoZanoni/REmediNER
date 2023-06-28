@@ -4,6 +4,7 @@ import ast
 import pandas as pd
 import torch
 import spacy
+import numpy as np
 
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
@@ -13,7 +14,7 @@ from nltk.tokenize import TreebankWordTokenizer
 def load_data():  # Noisy data? Duplicates?
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    # dataframe = dataframe[:2] # for debugging
+    dataframe = dataframe[:13]  # for debugging
     dataframe['indexes'] = dataframe['indexes'].astype(str)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
@@ -95,7 +96,7 @@ def compute_context_mean_length(data):
         context_pos = [pos for pos in context_pos if pos not in function_word]
         context_length += len(context_pos)
 
-    return (context_length / len(data)).__ceil__()
+    return np.ceil(context_length / len(data))
 
 
 def count_drug_effects(data):
@@ -115,6 +116,24 @@ def get_labels_id(data):
     label_id = {label: i for i, label in enumerate(entities)}
 
     return id_label, label_id, len(entities)
+
+
+def compute_entities_weights(data, label_id, max_len):
+    n_entities = len(label_id)
+    entities_counts = {i: 0 for i in range(n_entities)}
+    n_samples = len(data) * max_len
+
+    for i in range(len(data)):
+        for entity in data[i]:
+            entities_counts[entity] += 1
+
+    weights_dic = {i: n_samples / (entities_counts[i] * n_entities) for i in range(n_entities)}
+    entities_weights = [0] * n_entities
+    for entity in label_id:
+        entity_index = label_id[entity]
+        entities_weights[entity_index] = weights_dic[entity_index]
+
+    return entities_weights
 
 
 def tokenize_text(texts, labels, tokenizer):
@@ -176,6 +195,11 @@ def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_
         labels = copy.copy(labels)
         labels.insert(0, "O")
         labels.insert(len(tokenized_text) - 1, "O")
+
+        # truncation
+        if len(tokenized_text) > max_len:
+            tokenized_text = tokenized_text[:max_len]
+            labels = labels[:max_len]
         # padding
         if len(tokenized_text) < max_len:
             tokenized_text = tokenized_text + ['[PAD]' for _ in range(max_len - len(tokenized_text))]
@@ -189,11 +213,14 @@ def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_
         bert_masks.append(attention_mask)
         bert_labels.append(label_ids)
 
+    entities_weights = compute_entities_weights(bert_labels, label_id, max_len)
+    entities_weights = torch.tensor(entities_weights, dtype=torch.float32)
+
     bert_ids = torch.tensor(bert_ids, dtype=torch.long)
     bert_masks = torch.tensor(bert_masks, dtype=torch.long)
     bert_labels = torch.tensor(bert_labels, dtype=torch.long)
 
-    return [bert_ids, bert_masks, bert_labels]
+    return [bert_ids, bert_masks, bert_labels], entities_weights
 
 
 def iob_tagging(text, drug, effect, twt):

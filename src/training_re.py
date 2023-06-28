@@ -23,7 +23,7 @@ def reset_parameters(model):
 
 class TrainerRe:
     def __init__(self,
-                 model_ner: torch.nn.Module,
+                 model_ner,
                  context_mean_length: int,
                  entity_embeddings_length: int,
                  label_id: dict,
@@ -47,62 +47,70 @@ class TrainerRe:
         self.save_evey = save_every
         self.world_size = world_size
 
-    def _run_batch_re(self, ids, masks, labels, label_id, train_output,
+    def _run_batch_re(self, ids, masks, label_id, train_output,
                       model_re, model_ner, optimizer):
         model_re.train()
         optimizer.zero_grad()
-        _, entities_vector, entities_context = model_ner(ids, masks, labels)
+        with torch.no_grad():
+            model_ner.eval()
+            _, entities_vector, entities_context = model_ner(ids, masks)
         predicted_output = model_re(entities_vector, entities_context, label_id)
-        loss = torch.nn.BCELoss(predicted_output[2], train_output)
+        loss = torch.nn.BCELoss(predicted_output[0][2], train_output).to(self.gpu_id)
         loss.backward()
         optimizer.step()
         return predicted_output, loss
 
     def _run_epoch_re(self, train_in, train_output, label_id,
                       model_re, model_ner, optimizer, epoch):
+
         b_sz = len(next(iter(train_in))[0])
         train_in.sampler.set_epoch(epoch)
-        print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
-        loss_batch = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
-        start_time = time.time()
+        loss = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
         batch_re_output = []
-        for (ids, masks, labels), out in zip(train_in, train_output):
+        print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
+
+        for (ids, masks, _), out in zip(train_in, train_output):
+            out = out[0]
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
-            labels = labels.to(self.gpu_id)
             out = out.to(self.gpu_id)
-            re_output, loss = self._run_batch_re(ids, masks, labels, label_id, out,
-                                                 model_re, model_ner, optimizer)
-            loss_batch += loss
+            re_output, loss_batch = self._run_batch_re(ids, masks, label_id, out,
+                                                       model_re, model_ner, optimizer)
+            loss += loss_batch / b_sz
             batch_re_output.append(re_output)
 
-        return batch_re_output, loss_batch / b_sz
+        return batch_re_output, loss / len(train_in)
 
     def train_re(self, train_in, train_out, label_id, model_re, model_ner, optimizer):
+
         epoch_loss_means = torch.empty(1, dtype=torch.float32, device=self.gpu_id)
-        start_time = time.time()
         re_output = []
+        start_time = time.time()
+
         for epoch in range(self.epochs):
-            batch_re_output, batch_loss = self._run_epoch_re(train_in, train_out, label_id, model_re,
-                                      model_ner, optimizer, epoch)
+            batch_re_output, batch_loss = \
+                self._run_epoch_re(train_in, train_out, label_id, model_re, model_ner, optimizer, epoch)
             epoch_loss_means = torch.cat([epoch_loss_means, batch_loss], dim=0)
             re_output.extend(batch_re_output)
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
                 save_checkpoint(epoch, model_re)
 
         print("--- training time in seconds: %s ---" % (time.time() - start_time))
+
         return re_output, epoch_loss_means
 
     def _validation_re(self, val_in, val_out, label_id, model_ner, model_re):
         model_re.eval()
         loss_sum = 0
-        for ids, masks, labels in val_in:
+        for (ids, masks, labels), out in zip(val_in, val_out):
+            out = out[0]
             ids.to(self.gpu_id)
             masks.to(self.gpu_id)
             labels.to(self.gpu_id)
+            out = out.to(self.gpu_id)
             _, entities_vector, entities_context = model_ner(ids, masks, labels)
             predicted_output = model_re(entities_vector, entities_context, label_id)
-            loss = torch.nn.BCELoss(predicted_output[2], val_out[2])
+            loss = torch.nn.BCELoss(predicted_output[2], out)
             loss_sum += loss
 
         return loss_sum / len(val_in)
@@ -150,6 +158,7 @@ class TrainerRe:
             model = ReModel(self.context_mean_length, self.entity_embeddings_length)
             model.apply(reset_parameters)
             optimizer = model.get_optimizer()
+            model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
 
             re_output, loss = \

@@ -30,35 +30,35 @@ def ddp_setup(rank: int, world_size: int):
     torch.cuda.set_device(rank)
 
 
-def main(rank, world_size, save_every, total_epochs=1, batch_size=32):
+def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
     ddp_setup(rank, world_size)
 
     data = load_data()
     pre_process_texts(data)
-    compute_pos(data)
-    context_mean_length = compute_context_mean_length(data)
     compute_iob(data)
     id_label, label_id, len_labels = get_labels_id(data)
+    compute_pos(data)
+    context_mean_length = compute_context_mean_length(data)
 
     train_in, test_in, train_out_ner, train_out_re, test_out_ner, test_out_re = split_train_test(data)
 
     tokenized_texts_train, tokenized_labels_train = tokenize_text(train_in, train_out_ner, tokenizer)
     tokenized_texts_test, tokenized_labels_test = tokenize_text(test_in, test_out_ner, tokenizer)
-    inputs_train = get_bert_inputs(tokenized_texts_train, tokenized_labels_train, tokenizer, label_id)
+    inputs_train, entities_weights = get_bert_inputs(tokenized_texts_train, tokenized_labels_train, tokenizer, label_id)
     inputs_train = TensorDataset(inputs_train[0], inputs_train[1], inputs_train[2])
 
-    inputs_test = get_bert_inputs(tokenized_texts_test, tokenized_labels_test, tokenizer, label_id)
+    # inputs_test = get_bert_inputs(tokenized_texts_test, tokenized_labels_test, tokenizer, label_id)
     re_out = get_re_outputs(train_out_re)
     train_out_re = TensorDataset(re_out[2])
     re_out = get_re_outputs(test_out_re)
-    test_out_re = TensorDataset(re_out[2])
+    # test_out_re = TensorDataset(re_out[2])
 
     global bert_model
     bert_model = {'bert_model': bert_model,
                   'len_labels': len_labels,
                   'id_label': id_label,
                   'label_id': label_id}
-    ner_trainer = TrainerNer(bert_model, inputs_train, total_epochs, batch_size, rank, save_every, world_size)
+    ner_trainer = TrainerNer(bert_model, entities_weights, inputs_train, total_epochs, batch_size, rank, save_every, world_size)
     model_ner = ner_trainer.kfold_cross_validation(k=2)
     re_trainer = TrainerRe(model_ner, context_mean_length, 768, label_id, inputs_train, train_out_re, total_epochs,
                            batch_size, rank, save_every, world_size)
