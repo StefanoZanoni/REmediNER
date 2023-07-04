@@ -82,6 +82,7 @@ def pre_process_texts(data):
     # data['num_tokens_text'] = data['text'].apply(lambda x: len(str(x).split()))
 
 
+
 def compute_pos(data):
     nlp = spacy.load("en_core_web_sm")
     pos_tags = []
