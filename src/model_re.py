@@ -19,13 +19,12 @@ def get_entities_and_context_span(entities_vector, context_vector, label_id):
     batch_contexts_spans = []
 
     batch = 0
-    for list in entities_vector.tolist():
+    for l in entities_vector.tolist():
         entities_spans = []
         start = None
         end = None
         i = 0
-        # o b b b i i o o b o
-        for el in list:
+        for el in l:
             if el == label_id['B-Drug'] or el == label_id['B-Effect']:
                 if el == label_id['B-Drug']:
                     e_type = 0
@@ -116,5 +115,6 @@ class ReModel(torch.nn.Module):
                 output_linear = self.linear(linear_in)
                 out_re = self.sigmoid(output_linear)
                 output = (entity1, entity2, out_re)
+                outputs.append(output)
 
         return outputs

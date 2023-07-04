@@ -11,18 +11,39 @@ from sklearn.model_selection import train_test_split
 from nltk.tokenize import TreebankWordTokenizer
 
 
-def load_data():  # Noisy data? Duplicates?
+def load_data():
+
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    # dataframe = dataframe[:13]  # for debugging
+    dataframe = dataframe[:13]  # for debugging
     dataframe['indexes'] = dataframe['indexes'].astype(str)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
     dataframe['indexes'] = dataframe['indexes'].apply(lambda x: ast.literal_eval(x))
+
     return dataframe
 
 
+def drop_incorrect_sentences(data):
+
+    find_double_index = list()
+
+    for idx, item in data.iterrows():
+        drug_list = list(item["drug"].split())
+        effect_list = list(item["effect"].split())
+        for d in drug_list:
+            for e in effect_list:
+                if d == e:
+                    find_double_index.append(idx)
+
+    data.drop(index=find_double_index, inplace=True)
+    data.reset_index(drop=True, inplace=True)
+
+
 def pre_process_texts(data):
+
+    drop_incorrect_sentences(data)
+
     drugs = data['drug'].unique().tolist()
     effects = data['effect'].unique().tolist()
     exception_words = drugs + effects
@@ -53,7 +74,7 @@ def pre_process_texts(data):
     data['drug'] = data['drug'].str.replace(r'\s+', ' ', regex=True)
     data['effect'] = data['effect'].str.replace(r'\s+', ' ', regex=True)
 
-    # remove with spaces in patterns like 'z = 2.27.' Works also for subsequent patterns
+    # remove spaces in patterns like 'z = 2.27.' Works also for subsequent patterns
     data['text'] = data['text'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
     data['drug'] = data['drug'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
     data['effect'] = data['effect'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
