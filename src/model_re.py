@@ -101,6 +101,7 @@ class ReModel(torch.nn.Module):
 
         outputs = []
         for i in range(len(batch_entities_pairs)):
+            batch_output = []
             context_span = batch_context_span[i]
             entities_pairs = batch_entities_pairs[i]
             shape = list(context_span.size())
@@ -115,6 +116,7 @@ class ReModel(torch.nn.Module):
                 output_linear = self.linear(linear_in)
                 out_re = self.sigmoid(output_linear)
                 output = (entity1, entity2, out_re)
-                outputs.append(output)
+                batch_output.append(output)
+            outputs.append(batch_output)
 
         return outputs
