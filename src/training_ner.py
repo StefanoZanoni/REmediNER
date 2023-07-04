@@ -42,6 +42,7 @@ class TrainerNer:
         self.world_size = world_size
 
     def _run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
+
         model.train()
         optimizer.zero_grad()
         logits, entities_vector, context_vector = model(ids, masks)
@@ -51,13 +52,17 @@ class TrainerNer:
         output.backward()
         optimizer.step()
         scheduler.step()
+
         return torch.tensor(output.item(), dtype=torch.float32, device=self.gpu_id)
 
     def _run_epoch_ner(self, train_data, epoch, model, optimizer, scheduler):
+
         b_sz = len(next(iter(train_data))[0])
         train_data.sampler.set_epoch(epoch)
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_data)}")
+
         loss = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
+
         for ids, masks, labels in train_data:
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
@@ -67,21 +72,25 @@ class TrainerNer:
         return loss / len(train_data)
 
     def train_ner(self, train_data, model, optimizer, scheduler):
+
         epochs_loss_means = torch.empty(1, dtype=torch.float32, device=self.gpu_id)
         start_time = time.time()
+
         for epoch in range(self.epochs):
-            temp = self._run_epoch_ner(train_data, epoch, model, optimizer, scheduler)
-            epochs_loss_means = torch.cat([epochs_loss_means, temp], dim=0)
+            epoch_loss = self._run_epoch_ner(train_data, epoch, model, optimizer, scheduler)
+            epochs_loss_means = torch.cat([epochs_loss_means, epoch_loss], dim=0)
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
                 save_checkpoint(epoch, model)
 
-        print("--- training time in seconds: %s ---" % (time.time() - start_time))
+        print("--- TRAINING TIME IN SECONDS: %s ---\n" % (time.time() - start_time))
         return epochs_loss_means
 
     def _validation_ner(self, val_data, model):
+
         b_sz = len(next(iter(val_data))[0])
         model.eval()
         loss_sum = 0
+
         for ids, masks, labels in val_data:
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
@@ -95,13 +104,13 @@ class TrainerNer:
         return loss_sum / len(val_data)
 
     def kfold_cross_validation(self, k):
+
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
 
         results = []
 
         for fold, (train_idx, val_idx) in enumerate(kfold.split(self.train_data)):
-            print(f'FOLD {fold}')
-            print('--------------------------------')
+            print(f'--- FOLD {fold} ---\n')
 
             train_subsampler = SubsetRandomSampler(train_idx)
             val_subsampler = SubsetRandomSampler(val_idx)
@@ -131,9 +140,11 @@ class TrainerNer:
             scheduler = model.get_scheduler(self.epochs * len(train_subsampler) / self.batch_size)
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
+
             self.entities_weights.to(self.gpu_id)
 
             print(self.train_ner(train_loader, model, optimizer, scheduler))
+
             # Saving the model
             save_path = f'./model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
@@ -142,8 +153,6 @@ class TrainerNer:
             with torch.no_grad():
                 results.append(self._validation_ner(val_loader, model))
 
-        print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k} FOLDS')
-        print('--------------------------------')
-        print(f'{sum(results) / len(results)}')
+        print(f'K-FOLD CROSS VALIDATION RESULTS MEAN FOR {k} FOLDS: {sum(results) / len(results)}\n')
 
         return model

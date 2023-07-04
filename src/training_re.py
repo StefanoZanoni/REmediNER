@@ -49,6 +49,7 @@ class TrainerRe:
 
     def _run_batch_re(self, ids, masks, label_id, train_output,
                       model_re, model_ner, optimizer):
+
         model_re.train()
         optimizer.zero_grad()
         with torch.no_grad():
@@ -58,6 +59,7 @@ class TrainerRe:
         loss = torch.nn.BCELoss(predicted_output[0][2], train_output).to(self.gpu_id)
         loss.backward()
         optimizer.step()
+
         return predicted_output, loss
 
     def _run_epoch_re(self, train_in, train_output, label_id,
@@ -67,6 +69,7 @@ class TrainerRe:
         train_in.sampler.set_epoch(epoch)
         loss = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
         batch_re_output = []
+
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
 
         for (ids, masks, _), out in zip(train_in, train_output):
@@ -100,8 +103,11 @@ class TrainerRe:
         return re_output, epoch_loss_means
 
     def _validation_re(self, val_in, val_out, label_id, model_ner, model_re):
+
+        b_sz = len(next(iter(val_in))[0])
         model_re.eval()
         loss_sum = 0
+
         for (ids, masks, labels), out in zip(val_in, val_out):
             out = out[0]
             ids.to(self.gpu_id)
@@ -111,18 +117,18 @@ class TrainerRe:
             _, entities_vector, entities_context = model_ner(ids, masks, labels)
             predicted_output = model_re(entities_vector, entities_context, label_id)
             loss = torch.nn.BCELoss(predicted_output[2], out)
-            loss_sum += loss
+            loss_sum += loss / b_sz
 
         return loss_sum / len(val_in)
 
     def kfold_cross_validation(self, k):
+
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
 
         results = []
 
         for fold, (train_idx, val_idx) in enumerate(kfold.split(self.train_in)):
-            print(f'FOLD {fold}')
-            print('--------------------------------')
+            print(f'--- FOLD {fold} ---\n')
 
             train_in_subsampler = SubsetRandomSampler(train_idx)
             val_in_subsampler = SubsetRandomSampler(val_idx)
@@ -164,6 +170,7 @@ class TrainerRe:
             re_output, loss = \
                 self.train_re(train_in_loader, train_out_loader, self.label_id, model, self.model_ner, optimizer)
             print(loss)
+
             # Saving the model
             save_path = f'./model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
@@ -172,8 +179,6 @@ class TrainerRe:
             with torch.no_grad():
                 results.append(self._validation_re(val_in_loader, val_out_loader, self.label_id, self.model_ner, model))
 
-        print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k} FOLDS')
-        print('--------------------------------')
-        print(f'{sum(results) / len(results)}')
+        print(f'K-FOLD CROSS VALIDATION RESULTS MEAN FOR {k} FOLDS: {sum(results) / len(results)}\n')
 
         return re_output
