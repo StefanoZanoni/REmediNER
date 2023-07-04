@@ -14,7 +14,7 @@ from nltk.tokenize import TreebankWordTokenizer
 def load_data():  # Noisy data? Duplicates?
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    dataframe = dataframe[:13]  # for debugging
+    # dataframe = dataframe[:13]  # for debugging
     dataframe['indexes'] = dataframe['indexes'].astype(str)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
@@ -58,7 +58,7 @@ def pre_process_texts(data):
     data['drug'] = data['drug'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
     data['effect'] = data['effect'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
 
-    data['num_tokens_text'] = data['text'].apply(lambda x: len(str(x).split()))
+    # data['num_tokens_text'] = data['text'].apply(lambda x: len(str(x).split()))
 
 
 def compute_pos(data):
@@ -116,24 +116,6 @@ def get_labels_id(data):
     label_id = {label: i for i, label in enumerate(entities)}
 
     return id_label, label_id, len(entities)
-
-
-def compute_entities_weights(data, label_id, max_len):
-    n_entities = len(label_id)
-    entities_counts = {i: 0 for i in range(n_entities)}
-    n_samples = len(data) * max_len
-
-    for i in range(len(data)):
-        for entity in data[i]:
-            entities_counts[entity] += 1
-
-    weights_dic = {i: n_samples / (entities_counts[i] * n_entities) for i in range(n_entities)}
-    entities_weights = [0] * n_entities
-    for entity in label_id:
-        entity_index = label_id[entity]
-        entities_weights[entity_index] = weights_dic[entity_index]
-
-    return entities_weights
 
 
 def tokenize_text(texts, labels, tokenizer):
@@ -203,45 +185,42 @@ def get_bert_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_
         # padding
         if len(tokenized_text) < max_len:
             tokenized_text = tokenized_text + ['[PAD]' for _ in range(max_len - len(tokenized_text))]
-            labels = labels + ["O" for _ in range(max_len - len(labels))]
+            labels = labels + ['PAD' for _ in range(max_len - len(labels))]
 
         attention_mask = [1 if tok != '[PAD]' else 0 for tok in tokenized_text]
         ids = tokenizer.convert_tokens_to_ids(tokenized_text)
-        label_ids = [label_id[label] for label in labels]
+        # label_ids = [label_id[label] for label in labels]
+        label_ids = [label_id[label] if label != 'PAD' else -100 for label in labels]
 
         bert_ids.append(ids)
         bert_masks.append(attention_mask)
         bert_labels.append(label_ids)
 
-    entities_weights = compute_entities_weights(bert_labels, label_id, max_len)
-    entities_weights = torch.tensor(entities_weights, dtype=torch.float32)
-
     bert_ids = torch.tensor(bert_ids, dtype=torch.long)
     bert_masks = torch.tensor(bert_masks, dtype=torch.long)
     bert_labels = torch.tensor(bert_labels, dtype=torch.long)
 
-    return [bert_ids, bert_masks, bert_labels], entities_weights
+    return [bert_ids, bert_masks, bert_labels]
 
 
 def iob_tagging(text, drug, effect, twt):
     start_d, end_d = re.search(re.escape(drug), text).span()
-    span_list_d = twt.span_tokenize(text)
     start_e, end_e = re.search(re.escape(effect), text).span()
-    span_list_e = twt.span_tokenize(text)
+    span_list = twt.span_tokenize(text)
 
     entities = ['Drug', 'Effect']
 
     iob_list = []
     i = 0
-    for (start1, end1), (start2, end2) in zip(span_list_d, span_list_e):
+    for start, end in span_list:
         iob_tag = 'O'
-        if start1 == start_d or start2 == start_e:
+        if start == start_d or start == start_e:
             iob_tag = 'B'
-            if start1 == start_d:
+            if start == start_d:
                 i = 0
             else:
                 i = 1
-        elif (start_d < start1 and end1 <= end_d) or (start_e < start2 and end2 <= end_e):
+        elif (start_d < start and end <= end_d) or (start_e < start and end <= end_e):
             iob_tag = 'I'
 
         if iob_tag != 'O':

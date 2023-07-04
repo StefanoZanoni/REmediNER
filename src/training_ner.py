@@ -24,7 +24,6 @@ def reset_parameters(model):
 class TrainerNer:
     def __init__(self,
                  bert_model: dict,
-                 entities_weights: torch.Tensor,
                  train_data: TensorDataset,
                  epochs: int,
                  batch_size: int,
@@ -34,7 +33,6 @@ class TrainerNer:
                  ) -> None:
         self.gpu_id = gpu_id
         self.bert_model = bert_model
-        self.entities_weights = entities_weights
         self.train_data = train_data
         self.epochs = epochs
         self.batch_size = batch_size
@@ -46,7 +44,7 @@ class TrainerNer:
         model.train()
         optimizer.zero_grad()
         logits, entities_vector, context_vector = model(ids, masks)
-        loss = torch.nn.CrossEntropyLoss(weight=self.entities_weights).to(self.gpu_id)
+        loss = torch.nn.CrossEntropyLoss().to(self.gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         output = loss(logits, labels)
         output.backward()
@@ -73,7 +71,7 @@ class TrainerNer:
 
     def train_ner(self, train_data, model, optimizer, scheduler):
 
-        epochs_loss_means = torch.empty(1, dtype=torch.float32, device=self.gpu_id)
+        epochs_loss_means = torch.empty(0, dtype=torch.float32, device=self.gpu_id)
         start_time = time.time()
 
         for epoch in range(self.epochs):
@@ -96,7 +94,7 @@ class TrainerNer:
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
             logits, entities_vector, context_vector = model(ids, masks)
-            loss = torch.nn.CrossEntropyLoss(weight=self.entities_weights).to(self.gpu_id)
+            loss = torch.nn.CrossEntropyLoss().to(self.gpu_id)
             logits = torch.transpose(logits, dim0=1, dim1=2)
             output = loss(logits, labels)
             loss_sum += output.item() / b_sz
@@ -140,8 +138,6 @@ class TrainerNer:
             scheduler = model.get_scheduler(self.epochs * len(train_subsampler) / self.batch_size)
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
-
-            self.entities_weights.to(self.gpu_id)
 
             print(self.train_ner(train_loader, model, optimizer, scheduler))
 

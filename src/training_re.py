@@ -86,7 +86,7 @@ class TrainerRe:
 
     def train_re(self, train_in, train_out, label_id, model_re, model_ner, optimizer):
 
-        epoch_loss_means = torch.empty(1, dtype=torch.float32, device=self.gpu_id)
+        epoch_loss_means = torch.empty(0, dtype=torch.float32, device=self.gpu_id)
         re_output = []
         start_time = time.time()
 
