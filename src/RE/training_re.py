@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler, Dis
 from torch.nn.parallel import DistributedDataParallel as DDP
 from sklearn.model_selection import KFold
 
-from src.model_re import ReModel
+from src.RE.model_re import ReModel
 
 
 def save_checkpoint(epoch, model):
