@@ -39,9 +39,21 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
 
     ddp_setup(rank, world_size)
 
-    data = load_data()
-    pre_process_texts(data)
-    compute_iob(data)
+    if not os.path.exists("../data/ner.csv"):
+        data = load_data()
+        pre_process_texts(data)
+        compute_iob(data)
+        data.to_csv("../data/ner.csv", index=False)
+    else:
+        data = pd.read_csv("../data/ner.csv")
+
+    if not os.path.exists("../data/re.csv"):
+        data_re = prepare_data_for_re(data)
+        compute_pos(data_re)
+        data_re.to_csv("../data/re.csv", index=False)
+    else:
+        data_re = pd.read_csv("../data/re.csv", converters={"annotated_text": literal_eval, 'pos_tags': literal_eval})
+
     id_label, label_id, len_labels = get_labels_id(data)
 
     # NER data
