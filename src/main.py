@@ -97,8 +97,8 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
     # context_mean_length = compute_context_mean_length(data_re)
 
     # RE training
-    re_trainer = TrainerRe(model_ner, context_mean_length, 768, label_id, inputs_train_re, outputs_train_re,
-                           total_epochs, batch_size, rank, save_every, world_size)
+    re_trainer = TrainerRe(6, 768, inputs_train_re, outputs_train_re, total_epochs, batch_size, rank, save_every,
+                           world_size)
     re_trainer.kfold_cross_validation(k=2)
 
     destroy_process_group()

@@ -11,8 +11,8 @@ from src.NER.model_ner import NerModel
 
 def save_checkpoint(epoch, model):
     ckp = model.module.state_dict()
-    torch.save(ckp, "checkpoint.pt")
-    print(f"Epoch {epoch} | Training checkpoint saved at checkpoint.pt")
+    torch.save(ckp, "../NER/saves/checkpoint.pt")
+    print(f"Epoch {epoch} | Training checkpoint saved at NER/saves/checkpoint.pt")
 
 
 def reset_parameters(model):
@@ -161,7 +161,7 @@ class TrainerNer:
             print(result)
 
             # Saving the model
-            save_path = f'./model-fold-{fold}.pth'
+            save_path = f'../NER/saves/model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
             # Evaluation for this fold
