@@ -45,15 +45,15 @@ class TrainerNer:
 
         model.train()
         optimizer.zero_grad()
-        logits, entities_vector, context_vector = model(ids, masks)
-        loss = torch.nn.CrossEntropyLoss().to(self.gpu_id)
+        logits, entities_vector = model(ids, masks)
+        loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
-        output = loss(logits, labels)
-        output.backward()
+        loss = loss_fun(logits, labels)
+        loss.backward()
         optimizer.step()
         scheduler.step()
 
-        return torch.tensor(output.item(), dtype=torch.float32, device=self.gpu_id)
+        return torch.tensor(loss.item(), dtype=torch.float32, device=self.gpu_id)
 
     def _run_epoch_ner(self, train_in, train_out, epoch, model, optimizer, scheduler):
 
@@ -97,11 +97,11 @@ class TrainerNer:
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
-            logits, entities_vector, context_vector = model(ids, masks)
-            loss = torch.nn.CrossEntropyLoss().to(self.gpu_id)
+            logits, entities_vector = model(ids, masks)
+            loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
             logits = torch.transpose(logits, dim0=1, dim1=2)
-            output = loss(logits, labels)
-            loss_sum += output.item() / b_sz
+            loss = loss_fun(logits, labels)
+            loss_sum += loss.item() / b_sz
 
         return loss_sum / len(val_in)
 
@@ -169,5 +169,3 @@ class TrainerNer:
                 results.append(self._validation_ner(val_in_loader, val_out_loader, model))
 
         print(f'K-FOLD CROSS VALIDATION RESULTS MEAN FOR {k} FOLDS: {sum(results) / len(results)}\n')
-
-        return model

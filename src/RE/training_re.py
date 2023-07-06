@@ -23,31 +23,34 @@ def reset_parameters(model):
 
 class TrainerRe:
     def __init__(self,
+                 bert_name: str,
                  context_mean_length: int,
-                 entity_embeddings_length: int,
                  train_in: TensorDataset,
                  train_out: TensorDataset,
                  epochs: int,
                  batch_size: int,
                  gpu_id: int,
                  save_every: int,
-                 world_size: int
+                 world_size: int,
+                 max_number_pos: int
                  ) -> None:
+        self.bert_name = bert_name
         self.gpu_id = gpu_id
         self.context_mean_length = context_mean_length
-        self.entity_embeddings_length = entity_embeddings_length
         self.train_in = train_in
         self.train_out = train_out
         self.epochs = epochs
         self.batch_size = batch_size
         self.save_evey = save_every
         self.world_size = world_size
+        self.max_number_pos = max_number_pos
 
-    def _run_batch_re(self, ids, masks, train_output, model_re, optimizer):
+    def _run_batch_re(self, ids, masks, pos, train_output, model_re, optimizer):
 
         model_re.train()
         optimizer.zero_grad()
-        predicted_output = model_re(ids, masks)
+        embedding = torch.nn.Embedding(self.max_number_pos, 768, padding_idx=0).to(self.gpu_id)
+        predicted_output = model_re(ids, masks, pos, embedding)
         loss = torch.nn.CrossEntropyLoss(predicted_output, train_output).to(self.gpu_id)
         loss.backward()
         optimizer.step()
@@ -63,12 +66,13 @@ class TrainerRe:
 
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
 
-        for (ids, masks, _), out in zip(train_in, train_output):
+        for (ids, masks, pos), out in zip(train_in, train_output):
             out = out[0]
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
+            pos = pos.to(self.gpu_id)
             out = out.to(self.gpu_id)
-            re_output, loss_batch = self._run_batch_re(ids, masks, out, model_re, optimizer)
+            re_output, loss_batch = self._run_batch_re(ids, masks, pos, out, model_re, optimizer)
             loss += loss_batch / b_sz
             batch_re_output.append(re_output)
 
@@ -98,11 +102,10 @@ class TrainerRe:
         model_re.eval()
         loss_sum = 0
 
-        for (ids, masks, labels), out in zip(val_in, val_out):
+        for (ids, masks), out in zip(val_in, val_out):
             out = out[0]
             ids.to(self.gpu_id)
             masks.to(self.gpu_id)
-            labels.to(self.gpu_id)
             out = out.to(self.gpu_id)
             predicted_output = model_re(ids, masks)
             loss = torch.nn.BCELoss(predicted_output[2], out)
@@ -150,7 +153,7 @@ class TrainerRe:
                                                                    num_replicas=self.world_size,
                                                                    rank=self.gpu_id))
 
-            model = ReModel(self.context_mean_length, self.entity_embeddings_length)
+            model = ReModel(self.bert_name, self.context_mean_length, self.batch_size)
             model.apply(reset_parameters)
             optimizer = model.get_optimizer()
             model.to(self.gpu_id)

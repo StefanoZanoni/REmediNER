@@ -37,10 +37,5 @@ class NerModel(torch.nn.Module):
         logits = bert_output[0]
         entities_distribution = self.entities(logits)
         entities_vector = torch.argmax(entities_distribution, dim=-1)
-        hidden_states = bert_output[1]
-        num_hidden_states = len(hidden_states)
-        last_4_hidden_states = [hidden_states[num_hidden_states - 1 - 1], hidden_states[num_hidden_states - 1 - 2],
-                                hidden_states[num_hidden_states - 1 - 3], hidden_states[num_hidden_states - 1 - 4]]
-        entities_context = torch.concat(last_4_hidden_states, dim=-1)
 
-        return logits, entities_vector, entities_context
+        return logits, entities_vector

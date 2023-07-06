@@ -1,90 +1,63 @@
 import torch
 import numpy as np
-
-from itertools import combinations
-
-def compute_all_entities_pairs(batch_entities):
-
-    batch_entities_pairs = []
-
-    for batch in batch_entities:
-        batch_entities_pairs.append({comb for comb in combinations(batch, 2)})
-
-    return batch_entities_pairs
+from transformers import BertModel
 
 
-def get_entities_and_context_span(entities_vector, context_vector, label_id):
-
-    batch_entities = []
-    batch_contexts_spans = []
-
-    batch = 0
-    for l in entities_vector.tolist():
-        entities_spans = []
-        start = None
-        end = None
-        i = 0
-        for el in l:
-            if el == label_id['B-Drug'] or el == label_id['B-Effect']:
-                if el == label_id['B-Drug']:
-                    e_type = 0
-                else:
-                    e_type = 1
-                if start is None:
-                    start = i
-                    end = i
-                else:
-                    end = i
-            elif el == label_id['I-Drug'] or el == label_id['I-Effect']:
-                end = i
-            elif el == label_id['O'] and end is not None:
-                entities_spans.append((start, end, e_type))
-                start = None
-                end = None
-            i += 1
-
-        if end is not None:
-            entities_spans.append((start, end, e_type))
-
-        if entities_spans:
-            context_start = entities_spans[0][0]
-            context_end = entities_spans[len(entities_spans) - 1][1]
-            context_span = context_vector[batch, context_start:context_end, :]
-        else:
-            context_span = torch.empty(size=(0, 0, 0), dtype=torch.float32)
-
-        entities = []
-        for span in entities_spans:
-            entity_start = span[0]
-            entity_end = span[1]
-            if entity_start != entity_end:
-                test = context_vector[batch, entity_start:entity_end, :]
-                entity = \
-                    (torch.sum(context_vector[batch, entity_start:entity_end, :], dim=0), entity_start, entity_end, span[2])
-            else:
-                entity = \
-                    (context_vector[batch, entity_start, :], entity_start, entity_end, span[2])
-            entities.append(entity)
-
-        batch_entities.append(entities)
-        batch_contexts_spans.append(context_span)
-
-        batch += 1
-
-    return batch_entities, batch_contexts_spans
+def model_bert(model_name):
+    return BertModel.from_pretrained(model_name)
 
 
 class ReModel(torch.nn.Module):
-    def __init__(self, context_mean_length, entity_embeddings_length):
+
+    def __init__(self, bert_name, context_mean_length, batch_size):
         super(ReModel, self).__init__()
 
-        context_pool_dim = (int(context_mean_length), int(np.ceil(entity_embeddings_length * 4 / context_mean_length)))
-        linear_input_dim = (entity_embeddings_length * 4 * 2) + (context_pool_dim[0] * context_pool_dim[1])
+        self.context_mean_length = context_mean_length
+        self.hidden_size = 768
+        self.batch_size = batch_size
 
-        self.avg_pooling = torch.nn.AdaptiveAvgPool2d(context_pool_dim)  # we chose Average pooling - check max-pooling
-        self.flatten = torch.nn.Flatten()
-        self.linear = torch.nn.Linear(in_features=linear_input_dim, out_features=1)
-        self.sigmoid = torch.nn.Sigmoid()
+        self.bert = model_bert(bert_name)
+
+        # first piece of bert head: convolution + max pooling + dense
+        padding = (0, 0)
+        dilation = (1, 1)
+        kernel_size = (16, 16)
+        stride = (1, 1)
+        self.conv = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size)
+        self.conv_swish = torch.nn.SiLU()
+        h_in = self.hidden_size * 4
+        h_out = ((h_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1
+        pool_h_out = int(np.ceil(h_out / 2))
+        self.conv_max_pool = torch.nn.AdaptiveMaxPool2d(output_size=(context_mean_length, pool_h_out))
+
+        self.conv_flatten = torch.nn.Flatten()
+        linear_in_size = int(pool_h_out * context_mean_length)
+        self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=512 * 5)
+        self.conv_linear_relu = torch.nn.ReLU()
+
+        # second piece of bert head: bilstm + dense
+
+        # batch_first=True means batch should be our first dimension (Input Type 2)
+        # otherwise if we do not define batch_first=True in RNN we need data in Input type 1 shape
+        # (Sequence Length, Batch Size, Input Dimension).
+
+        # LSTM layer
+        hidden_size = 8
+        self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=64,
+                                  batch_first=True, bidirectional=True, dropout=0.3)  # check different num_layers!
+
+        self.lstm_flatten = torch.nn.Flatten()
+        linear_in_size = 512 * hidden_size * 2
+        self.lstm_linear = torch.nn.Linear(in_features=linear_in_size, out_features=512 * 5)
+        self.lstm_gelu = torch.nn.GELU()
+
+        # final dense
+        self.final_linear1 = torch.nn.Linear(in_features=512 * 5 * 2, out_features=512 * 5)
+        self.final_linear1_elu = torch.nn.ELU()
+        self.final_dropout = torch.nn.Dropout()
+        self.final_linear2 = torch.nn.Linear(in_features=512 * 5, out_features=512 * 5)
+        self.final_linear2_elu = torch.nn.ELU()
+        self.final_softmax = torch.nn.Softmax(dim=-1)
 
     def get_optimizer(self):
         optimizer = torch.optim.AdamW(ReModel.parameters(self),
@@ -93,30 +66,50 @@ class ReModel(torch.nn.Module):
                                       )
         return optimizer
 
-    def forward(self, entities_vector, context_vector, label_id):
+    def __bert_head(self, bert_output, pos, embedding):
 
-        batch_entities, batch_context_span = \
-            get_entities_and_context_span(entities_vector, context_vector, label_id)
-        batch_entities_pairs = compute_all_entities_pairs(batch_entities)
+        # conv computation
+        bert_output_shape = list(bert_output.size())
+        conv_input = torch.reshape(bert_output, (bert_output_shape[0], 1, bert_output_shape[1], bert_output_shape[2]))
+        conv_output = self.conv(conv_input)
+        conv_output = self.conv_swish(conv_output)
+        max_pool_out = self.conv_max_pool(conv_output)
+        flatten_out = self.conv_flatten(max_pool_out)
+        linear_out = self.conv_linear(flatten_out)
+        conv_out = self.conv_linear_relu(linear_out)
 
-        outputs = []
-        for i in range(len(batch_entities_pairs)):
-            batch_output = []
-            context_span = batch_context_span[i]
-            entities_pairs = batch_entities_pairs[i]
-            shape = list(context_span.size())
-            context_span = torch.reshape(context_span, shape=(1, shape[0], shape[1]))
-            context_pooling = self.avg_pooling(context_span)
-            context_flattened = self.flatten(context_pooling)
-            context_flattened = torch.flatten(context_flattened)
-            for pair in entities_pairs:
-                entity1 = pair[0][0]
-                entity2 = pair[1][0]
-                linear_in = torch.cat([entity1, context_flattened, entity2])
-                output_linear = self.linear(linear_in)
-                out_re = self.sigmoid(output_linear)
-                output = (entity1, entity2, out_re)
-                batch_output.append(output)
-            outputs.append(batch_output)
+        # bilstm computation
+        pos_embedding = embedding(pos)
+        lstm_input = torch.concat([bert_output, pos_embedding], dim=-1)
+        bilstm_out = self.lstm(lstm_input)[0]
+        bilstm_out = self.lstm_flatten(bilstm_out)
+        linear_out = self.lstm_linear(bilstm_out)
+        lstm_out = self.lstm_gelu(linear_out)
 
-        return outputs
+        # final computation
+        final_input = torch.concat([conv_out, lstm_out], dim=-1)
+        final_output1 = self.final_linear1(final_input)
+        final_output1 = self.final_linear1_elu(final_output1)
+        final_output1 = self.final_dropout(final_output1)
+        final_output2 = self.final_linear2(final_output1)
+        final_output2 = self.final_linear2_elu(final_output2)
+        # set first shape to batch size
+        final_output2 = torch.reshape(final_output2, shape=(12, 512, 5))
+        re_output = self.final_softmax(final_output2)
+        re_output = torch.argmax(re_output, dim=-1)
+
+        return re_output
+
+    def forward(self, ids, masks, pos, embedding):
+        bert_output = self.bert(ids, masks, output_hidden_states=True)
+
+        # concatenate the last four hidden states
+        bert_output = bert_output.hidden_states
+        num_hidden_states = len(bert_output)
+        bert_output = [bert_output[num_hidden_states - 1 - 1], bert_output[num_hidden_states - 1 - 2],
+                       bert_output[num_hidden_states - 1 - 3], bert_output[num_hidden_states - 1 - 4]]
+        bert_output = torch.concat(bert_output, dim=-1)
+
+        output = self.__bert_head(bert_output, pos, embedding)
+
+        return output
