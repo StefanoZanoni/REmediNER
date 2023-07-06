@@ -11,7 +11,7 @@ from src.RE.model_re import ReModel
 
 def save_checkpoint(epoch, model):
     ckp = model.module.state_dict()
-    torch.save(ckp, "../NER/saves/checkpoint.pt")
+    torch.save(ckp, "checkpoint.pt")
     print(f"Epoch {epoch} | Training checkpoint saved at RE/saves/checkpoint.pt")
 
 
@@ -51,7 +51,9 @@ class TrainerRe:
         optimizer.zero_grad()
         embedding = torch.nn.Embedding(self.max_number_pos, 768, padding_idx=0).to(self.gpu_id)
         predicted_output = model_re(ids, masks, pos, embedding)
-        loss = torch.nn.CrossEntropyLoss(predicted_output, train_output).to(self.gpu_id)
+        predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
+        loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
+        loss = loss_fun(predicted_output, train_output)
         loss.backward()
         optimizer.step()
 
@@ -102,13 +104,17 @@ class TrainerRe:
         model_re.eval()
         loss_sum = 0
 
-        for (ids, masks), out in zip(val_in, val_out):
+        for (ids, masks, pos), out in zip(val_in, val_out):
             out = out[0]
             ids.to(self.gpu_id)
             masks.to(self.gpu_id)
+            pos = pos.to(self.gpu_id)
             out = out.to(self.gpu_id)
-            predicted_output = model_re(ids, masks)
-            loss = torch.nn.BCELoss(predicted_output[2], out)
+            embedding = torch.nn.Embedding(self.max_number_pos, 768, padding_idx=0).to(self.gpu_id)
+            predicted_output = model_re(ids, masks, pos, embedding)
+            predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
+            loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
+            loss = loss_fun(predicted_output, out)
             loss_sum += loss / b_sz
 
         return loss_sum / len(val_in)
@@ -163,7 +169,7 @@ class TrainerRe:
             print(losses)
 
             # Saving the model
-            save_path = f'../RE/saves/model-fold-{fold}.pth'
+            save_path = f'model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
             # Evaluation for this fold

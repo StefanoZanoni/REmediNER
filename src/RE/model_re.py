@@ -94,9 +94,8 @@ class ReModel(torch.nn.Module):
         final_output2 = self.final_linear2(final_output1)
         final_output2 = self.final_linear2_elu(final_output2)
         # set first shape to batch size
-        final_output2 = torch.reshape(final_output2, shape=(12, 512, 5))
+        final_output2 = torch.reshape(final_output2, shape=(self.batch_size, 512, 5))
         re_output = self.final_softmax(final_output2)
-        re_output = torch.argmax(re_output, dim=-1)
 
         return re_output
 

@@ -250,4 +250,4 @@ def compute_pos_indexes(tokenized_pos):
 
         indexes_global.append(indexes_local)
 
-    return indexes_global, len(max_number_pos)
+    return indexes_global, len(max_number_pos) + 1
