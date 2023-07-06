@@ -44,7 +44,7 @@ class ReModel(torch.nn.Module):
         # LSTM layer
         hidden_size = 8
         self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=64,
-                                  batch_first=True, bidirectional=True, dropout=0.3)  # check different num_layers!
+                                  batch_first=True, bidirectional=True, dropout=0.3)
 
         self.lstm_flatten = torch.nn.Flatten()
         linear_in_size = 512 * hidden_size * 2
