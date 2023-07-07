@@ -8,6 +8,7 @@ import transformers
 from torch.distributed import init_process_group, destroy_process_group
 from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
+from torchsummary import summary
 
 from src.data_utilities import load_data, pre_process_texts
 from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
@@ -23,37 +24,7 @@ tokenizer = BertTokenizerFast.from_pretrained(bert_name)
 transformers.utils.logging.set_verbosity_error()
 
 
-def ddp_setup(rank: int, world_size: int):
-    """
-    Args:
-    rank: Unique identifier of each process
-    world_size: Total number of processes
-    """
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
-    init_process_group(backend="nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
-
-
-def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
-    global bert_name
-    ddp_setup(rank, world_size)
-
-    if not os.path.exists("../data/ner.csv"):
-        data = load_data()
-        pre_process_texts(data)
-        compute_iob(data)
-        data.to_csv("../data/ner.csv", index=False)
-    else:
-        data = pd.read_csv("../data/ner.csv")
-
-    if not os.path.exists("../data/re.csv"):
-        data_re = prepare_data_for_re(data)
-        compute_pos(data_re)
-        data_re.to_csv("../data/re.csv", index=False)
-    else:
-        data_re = pd.read_csv("../data/re.csv", converters={"annotated_text": literal_eval, 'pos_tags': literal_eval})
-
+def train_re(data_re, epochs, batch_size, rank, save_every, world_size):
     # RE data
     tokenized_texts, tokenized_annotation, tokenized_pos = tokenize_text_re(data_re, tokenizer)
     pos_indexes, max_number_pos = compute_pos_indexes(tokenized_pos)
@@ -75,16 +46,24 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
     context_mean_length = compute_context_mean_length(data_re)
 
     # RE training
-    re_trainer = TrainerRe(bert_name, context_mean_length, inputs_train_re, outputs_train_re, total_epochs,
+    re_trainer = TrainerRe(bert_name, context_mean_length, inputs_train_re, outputs_train_re, epochs,
                            batch_size, rank, save_every, world_size, max_number_pos)
-    re_trainer.kfold_cross_validation(k=2)
+    re_output, re_model = re_trainer.kfold_cross_validation(k=2)
+    summary(re_model,
+            input_size=[(batch_size, 512), (batch_size, 512), (batch_size, 512), 1, batch_size],
+            dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor', 'Object', 'Int'])
 
+    return re_model
+
+
+def train_ner(data, epochs, batch_size, rank, save_every, world_size):
     # NER data
     id_label, label_id, len_labels = get_labels_id(data)
     train_in_ner, test_in_ner, train_out_ner, test_out_ner = split_train_test_ner(data)
 
     # train data
-    tokenized_texts_train_ner, tokenized_labels_train_ner = tokenize_text_ner(train_in_ner, train_out_ner, tokenizer)
+    tokenized_texts_train_ner, tokenized_labels_train_ner = tokenize_text_ner(train_in_ner, train_out_ner,
+                                                                              tokenizer)
     ner_ids, ner_masks, ner_labels = \
         get_ner_inputs(tokenized_texts_train_ner, tokenized_labels_train_ner, tokenizer, label_id)
     inputs_train_ner = TensorDataset(ner_ids, ner_masks)
@@ -102,8 +81,48 @@ def main(rank, world_size, save_every, total_epochs=10, batch_size=32):
                   'id_label': id_label,
                   'label_id': label_id}
     ner_trainer = TrainerNer(bert_model, inputs_train_ner, outputs_train_ner,
-                             total_epochs, batch_size, rank, save_every, world_size)
-    ner_trainer.kfold_cross_validation(k=2)
+                             epochs, batch_size, rank, save_every, world_size)
+    ner_model = ner_trainer.kfold_cross_validation(k=2)
+    summary(ner_model,
+            input_size=[(batch_size, 128), (batch_size, 128)],
+            dtypes=['torch.IntTensor', 'torch.IntTensor'])
+
+    return ner_model
+
+
+def ddp_setup(rank: int, world_size: int):
+    """
+    Args:
+    rank: Unique identifier of each process
+    world_size: Total number of processes
+    """
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+
+
+def main(rank, world_size, save_every, epochs=10, batch_size=32):
+    global bert_name
+    ddp_setup(rank, world_size)
+
+    if not os.path.exists("../data/ner.csv"):
+        data = load_data()
+        pre_process_texts(data)
+        compute_iob(data)
+        data.to_csv("../data/ner.csv", index=False)
+    else:
+        data = pd.read_csv("../data/ner.csv")
+
+    if not os.path.exists("../data/re.csv"):
+        data_re = prepare_data_for_re(data)
+        compute_pos(data_re)
+        data_re.to_csv("../data/re.csv", index=False)
+    else:
+        data_re = pd.read_csv("../data/re.csv", converters={"annotated_text": literal_eval, 'pos_tags': literal_eval})
+
+    ner_model = train_ner(data, epochs, batch_size, rank, save_every, world_size)
+    re_model = train_re(data_re, epochs, batch_size, rank, save_every, world_size)
 
     destroy_process_group()
 

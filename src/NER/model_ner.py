@@ -4,8 +4,13 @@ from transformers import get_linear_schedule_with_warmup
 
 
 def model_ner(model_name, len_labels, id_label, label_id):
-    return AutoModelForTokenClassification.from_pretrained(model_name, num_labels=len_labels,
-                                                           id2label=id_label, label2id=label_id)
+    model = AutoModelForTokenClassification.from_pretrained(model_name, num_labels=len_labels,
+                                                            id2label=id_label, label2id=label_id)
+    # freeze the bert parameters, train just the classifier
+    for param in model.bert.parameters():
+        param.requires_grad = False
+
+    return model
 
 
 class NerModel(torch.nn.Module):
@@ -32,7 +37,6 @@ class NerModel(torch.nn.Module):
         return scheduler
 
     def forward(self, ids, mask):
-
         bert_output = self.ner(ids, attention_mask=mask, return_dict=False, output_hidden_states=True)
         logits = bert_output[0]
         entities_distribution = self.entities(logits)

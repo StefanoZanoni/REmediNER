@@ -1,5 +1,6 @@
 import time
 
+import numpy as np
 import torch
 
 from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler, DistributedSampler
@@ -7,11 +8,61 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from sklearn.model_selection import KFold
 
 from src.NER.model_ner import NerModel
+from src.early_stopping import EarlyStopper
+from src.plot import plot_loss, plot_metrics
+
+from matplotlib import pyplot as plt
+import seaborn as sns
+from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import confusion_matrix
+
+
+def clean_data(true_values, predicted_values):
+    new_true = []
+    new_predicted = []
+
+    for i in range(true_values.shape[0]):
+        true = true_values[i]
+        predicted = predicted_values[i]
+        predicted = np.delete(predicted, np.where(true == -100))
+        true = np.delete(true, np.where(true == -100))
+        new_true.append(true)
+        new_predicted.append(predicted)
+
+    return new_true, new_predicted
+
+
+def scoring(true_values, predicted_values):
+    true_values, predicted_values = clean_data(true_values, predicted_values)
+    precisions = []
+    recalls = []
+    f1s = []
+    batch_dim = len(true_values)
+    for true, predicted in zip(true_values, predicted_values):
+        precision = precision_score(true, predicted, average='micro')
+        precisions.append(precision)
+        recall = recall_score(true, predicted, average='micro')
+        recalls.append(recall)
+        f1 = f1_score(true, predicted, average='micro')
+        f1s.append(f1)
+
+    return sum(precisions) / batch_dim, sum(recalls) / batch_dim, sum(f1s) / batch_dim
+
+
+def confusion_matrix(true_values, predicted_values):
+    # Calculate confusion matrix
+    cm = confusion_matrix(true_values, predicted_values)
+
+    # Create heatmap
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.show()
 
 
 def save_checkpoint(epoch, model):
     ckp = model.module.state_dict()
-    torch.save(ckp, "checkpoint.pt")
+    torch.save(ckp, "./NER/saves/checkpoint.pt")
     print(f"Epoch {epoch} | Training checkpoint saved at NER/saves/checkpoint.pt")
 
 
@@ -41,7 +92,7 @@ class TrainerNer:
         self.save_evey = save_every
         self.world_size = world_size
 
-    def _run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
+    def __run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
 
         model.train()
         optimizer.zero_grad()
@@ -52,45 +103,101 @@ class TrainerNer:
         loss.backward()
         optimizer.step()
         scheduler.step()
+        logits = torch.transpose(logits, dim0=1, dim1=2)
+        predicted_output = torch.argmax(logits, dim=-1)
+        predicted_labels = predicted_output.numpy(force=True)
+        true_labels = labels.numpy(force=True)
+        precision, recall, f1 = scoring(true_labels, predicted_labels)
 
-        return torch.tensor(loss.item(), dtype=torch.float32, device=self.gpu_id)
+        return loss.item(), precision, recall, f1
 
-    def _run_epoch_ner(self, train_in, train_out, epoch, model, optimizer, scheduler):
+    def __run_epoch_ner(self, train_in, train_out, epoch, model, optimizer, scheduler):
 
         b_sz = len(next(iter(train_in))[0])
         train_in.sampler.set_epoch(epoch)
+        train_out.sampler.set_epoch(epoch)
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
 
-        loss = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
+        epoch_loss = 0
+        epoch_precision = 0
+        epoch_recall = 0
+        epoch_f1 = 0
+        train_dim = len(train_in)
 
         for (ids, masks), labels in zip(train_in, train_out):
             labels = labels[0]
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
-            loss += (self._run_batch_ner(ids, masks, labels, model, optimizer, scheduler) / b_sz)
+            batch_loss, precision, recall, f1 = self.__run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
+            epoch_loss += batch_loss / b_sz
+            epoch_precision += precision
+            epoch_recall += recall
+            epoch_f1 += f1
 
-        return loss / len(train_in)
+        return epoch_loss / train_dim, epoch_precision / train_dim, epoch_recall / train_dim, epoch_f1 / train_dim
 
-    def train_ner(self, train_in, train_out, model, optimizer, scheduler):
+    def __train_ner(self, train_in, train_out, val_in, val_out, model, optimizer, scheduler):
 
-        epochs_loss_means = torch.empty(0, dtype=torch.float32, device=self.gpu_id)
+        train_loss_mean = []
+        train_precision_mean = []
+        train_recall_mean = []
+        train_f1_mean = []
+        validation_loss_mean = []
+        validation_precision_mean = []
+        validation_recall_mean = []
+        validation_f1_mean = []
+        stopper = EarlyStopper(patience=3, min_delta=0.005)
+
         start_time = time.time()
 
         for epoch in range(self.epochs):
-            epoch_loss = self._run_epoch_ner(train_in, train_out, epoch, model, optimizer, scheduler)
-            epochs_loss_means = torch.cat([epochs_loss_means, epoch_loss], dim=0)
+
+            parameters_dict = model.state_dict()
+
+            # training step
+            train_loss, train_precision, train_recall, train_f1 = \
+                self.__run_epoch_ner(train_in, train_out, epoch, model, optimizer, scheduler)
+            # validation step
+            with torch.no_grad():
+                validation_loss, validation_precision, validation_recall, validation_f1 = \
+                    self.__validation_ner(val_in, val_out, model, epoch)
+
+            train_loss_mean.append(train_loss)
+            train_precision_mean.append(train_precision)
+            train_recall_mean.append(train_recall)
+            train_f1_mean.append(train_f1)
+            validation_loss_mean.append(validation_loss)
+            validation_precision_mean.append(validation_precision)
+            validation_recall_mean.append(validation_recall)
+            validation_f1_mean.append(validation_f1)
+
+            # check for early stopping condition
+            end, best_parameters_dict = stopper.early_stop(validation_loss, parameters_dict)
+            if end:
+                # restore the best parameters found
+                model.load_state_dict(best_parameters_dict)
+                break
+
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
                 save_checkpoint(epoch, model)
 
         print("--- TRAINING TIME IN SECONDS: %s ---\n" % (time.time() - start_time))
-        return epochs_loss_means
 
-    def _validation_ner(self, val_in, val_out, model):
+        return train_loss_mean, train_precision_mean, train_recall_mean, train_f1_mean, \
+            validation_loss_mean, validation_precision_mean, validation_recall_mean, validation_f1_mean
+
+    def __validation_ner(self, val_in, val_out, model, epoch):
 
         b_sz = len(next(iter(val_in))[0])
+        val_in.sampler.set_epoch(epoch)
+        val_out.sampler.set_epoch(epoch)
         model.eval()
         loss_sum = 0
+        precision = 0
+        recall = 0
+        f1 = 0
+        val_dim = len(val_in)
 
         for (ids, masks), labels in zip(val_in, val_out):
             labels = labels[0]
@@ -102,14 +209,22 @@ class TrainerNer:
             logits = torch.transpose(logits, dim0=1, dim1=2)
             loss = loss_fun(logits, labels)
             loss_sum += loss.item() / b_sz
+            logits = torch.transpose(logits, dim0=1, dim1=2)
+            predicted_output = torch.argmax(logits, dim=-1)
+            predicted_labels = predicted_output.numpy(force=True)
+            true_labels = labels.numpy(force=True)
+            batch_precision, batch_recall, batch_f1 = scoring(true_labels, predicted_labels)
+            precision += batch_precision
+            recall += batch_recall
+            f1 += batch_f1
 
-        return loss_sum / len(val_in)
+        return loss_sum / val_dim, precision / val_dim, recall / val_dim, f1 / val_dim
 
     def kfold_cross_validation(self, k):
 
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
-
-        results = []
+        train_means = []
+        validation_means = []
 
         for fold, (train_idx, val_idx) in enumerate(kfold.split(self.train_in)):
             print(f'--- FOLD {fold} ---\n')
@@ -157,15 +272,27 @@ class TrainerNer:
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
 
-            result = self.train_ner(train_in_loader, train_out_loader, model, optimizer, scheduler)
-            print(result)
+            train_losses, train_precisions, train_recalls, train_f1s, \
+                validation_losses, validation_precisions, validation_recalls, validation_f1s = \
+                self.__train_ner(train_in_loader, train_out_loader,
+                                 val_in_loader, val_out_loader,
+                                 model, optimizer, scheduler)
+
+            train_mean = sum(train_losses) / len(train_losses)
+            validation_mean = sum(validation_losses) / len(validation_losses)
+            train_means.append(train_mean)
+            validation_means.append(validation_mean)
 
             # Saving the model
-            save_path = f'model-fold-{fold}.pth'
+            save_path = f'./NER/saves/model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
-            # Evaluation for this fold
-            with torch.no_grad():
-                results.append(self._validation_ner(val_in_loader, val_out_loader, model))
+            plot_loss(train_losses, validation_losses, fold)
+            plot_metrics(train_precisions, train_recalls, train_f1s,
+                         validation_precisions, validation_recalls, validation_f1s, fold)
 
-        print(f'K-FOLD CROSS VALIDATION RESULTS MEAN FOR {k} FOLDS: {sum(results) / len(results)}\n')
+        print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
+
+        print(f'K-FOLD VALIDATION RESULTS MEAN FOR {k} FOLDS:'f' {sum(validation_means) / len(validation_means)}\n\n')
+
+        return model

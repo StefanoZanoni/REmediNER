@@ -4,7 +4,13 @@ from transformers import BertModel
 
 
 def model_bert(model_name):
-    return BertModel.from_pretrained(model_name)
+    model = BertModel.from_pretrained(model_name)
+
+    # freeze bert parameters
+    for param in model.parameters():
+        param.requires_grad = False
+
+    return model
 
 
 class ReModel(torch.nn.Module):
@@ -21,13 +27,13 @@ class ReModel(torch.nn.Module):
         # first piece of bert head: convolution + max pooling + dense
         padding = (0, 0)
         dilation = (1, 1)
-        kernel_size = (16, 16)
+        kernel_size = (128, 16)
         stride = (1, 1)
         self.conv = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size)
         self.conv_swish = torch.nn.SiLU()
         h_in = self.hidden_size * 4
         h_out = ((h_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1
-        pool_h_out = int(np.ceil(h_out / 2))
+        pool_h_out = int(np.ceil(h_out / 4))
         self.conv_max_pool = torch.nn.AdaptiveMaxPool2d(output_size=(context_mean_length, pool_h_out))
 
         self.conv_flatten = torch.nn.Flatten()
@@ -43,7 +49,7 @@ class ReModel(torch.nn.Module):
 
         # LSTM layer
         hidden_size = 8
-        self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=64,
+        self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=16,
                                   batch_first=True, bidirectional=True, dropout=0.3)
 
         self.lstm_flatten = torch.nn.Flatten()
@@ -66,8 +72,7 @@ class ReModel(torch.nn.Module):
                                       )
         return optimizer
 
-    def __bert_head(self, bert_output, pos, embedding):
-
+    def __bert_head(self, bert_output, pos, embedding, effective_batch_size):
         # conv computation
         bert_output_shape = list(bert_output.size())
         conv_input = torch.reshape(bert_output, (bert_output_shape[0], 1, bert_output_shape[1], bert_output_shape[2]))
@@ -93,13 +98,12 @@ class ReModel(torch.nn.Module):
         final_output1 = self.final_dropout(final_output1)
         final_output2 = self.final_linear2(final_output1)
         final_output2 = self.final_linear2_elu(final_output2)
-        # set first shape to batch size
-        final_output2 = torch.reshape(final_output2, shape=(self.batch_size, 512, 5))
+        final_output2 = torch.reshape(final_output2, shape=(effective_batch_size, 512, 5))
         re_output = self.final_softmax(final_output2)
 
         return re_output
 
-    def forward(self, ids, masks, pos, embedding):
+    def forward(self, ids, masks, pos, embedding, effective_batch_size):
         bert_output = self.bert(ids, masks, output_hidden_states=True)
 
         # concatenate the last four hidden states
@@ -109,6 +113,6 @@ class ReModel(torch.nn.Module):
                        bert_output[num_hidden_states - 1 - 3], bert_output[num_hidden_states - 1 - 4]]
         bert_output = torch.concat(bert_output, dim=-1)
 
-        output = self.__bert_head(bert_output, pos, embedding)
+        output = self.__bert_head(bert_output, pos, embedding, effective_batch_size)
 
         return output

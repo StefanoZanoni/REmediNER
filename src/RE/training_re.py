@@ -7,11 +7,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from sklearn.model_selection import KFold
 
 from src.RE.model_re import ReModel
+from src.early_stopping import EarlyStopper
+from src.plot import plot_loss
 
 
 def save_checkpoint(epoch, model):
     ckp = model.module.state_dict()
-    torch.save(ckp, "checkpoint.pt")
+    torch.save(ckp, "./RE/saves/checkpoint.pt")
     print(f"Epoch {epoch} | Training checkpoint saved at RE/saves/checkpoint.pt")
 
 
@@ -44,27 +46,29 @@ class TrainerRe:
         self.save_evey = save_every
         self.world_size = world_size
         self.max_number_pos = max_number_pos
+        self.embedding = torch.nn.Embedding(self.max_number_pos, 768, padding_idx=0).to(self.gpu_id)
 
-    def _run_batch_re(self, ids, masks, pos, train_output, model_re, optimizer):
+    def __run_batch_re(self, ids, masks, pos, train_output, model_re, optimizer):
 
         model_re.train()
         optimizer.zero_grad()
-        embedding = torch.nn.Embedding(self.max_number_pos, 768, padding_idx=0).to(self.gpu_id)
-        predicted_output = model_re(ids, masks, pos, embedding)
+        effective_batch_size = list(ids.size())[0]
+        predicted_output = model_re(ids, masks, pos, self.embedding, effective_batch_size)
         predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
         loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
         loss = loss_fun(predicted_output, train_output)
         loss.backward()
         optimizer.step()
 
-        return predicted_output, loss
+        return predicted_output, loss.item()
 
-    def _run_epoch_re(self, train_in, train_output, model_re, optimizer, epoch):
+    def __run_epoch_re(self, train_in, train_output, model_re, optimizer, epoch):
 
         b_sz = len(next(iter(train_in))[0])
         train_in.sampler.set_epoch(epoch)
-        loss = torch.zeros(1, dtype=torch.float32, device=self.gpu_id)
-        batch_re_output = []
+        train_output.sampler.set_epoch(epoch)
+        epoch_loss = 0
+        epoch_re_output = []
 
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
 
@@ -74,33 +78,56 @@ class TrainerRe:
             masks = masks.to(self.gpu_id)
             pos = pos.to(self.gpu_id)
             out = out.to(self.gpu_id)
-            re_output, loss_batch = self._run_batch_re(ids, masks, pos, out, model_re, optimizer)
-            loss += loss_batch / b_sz
-            batch_re_output.append(re_output)
+            batch_re_output, batch_loss = self.__run_batch_re(ids, masks, pos, out, model_re, optimizer)
+            epoch_loss += batch_loss / b_sz
+            epoch_re_output.append(batch_re_output)
 
-        return batch_re_output, loss / len(train_in)
+        return batch_re_output, epoch_loss / len(train_in)
 
-    def train_re(self, train_in, train_out, model_re, optimizer):
+    def __train_re(self, train_in, train_out, val_in, val_out, model_re, optimizer):
 
-        epoch_loss_means = torch.empty(0, dtype=torch.float32, device=self.gpu_id)
+        train_loss_mean = []
+        validation_loss_mean = []
         re_output = []
+        stopper = EarlyStopper(patience=3, min_delta=0.005)
+
         start_time = time.time()
 
         for epoch in range(self.epochs):
-            batch_re_output, batch_loss = \
-                self._run_epoch_re(train_in, train_out, model_re, optimizer, epoch)
-            epoch_loss_means = torch.cat([epoch_loss_means, batch_loss], dim=0)
+
+            parameters_dict = model_re.state_dict()
+
+            # training step
+            batch_re_output, epoch_loss = \
+                self.__run_epoch_re(train_in, train_out, model_re, optimizer, epoch)
+            # validation step
+            with torch.no_grad():
+                validation_loss = self.__validation_re(val_in, val_out, model_re, epoch)
+
+            train_loss_mean.append(epoch_loss)
+            validation_loss_mean.append(validation_loss)
             re_output.extend(batch_re_output)
+
+            # check for early stopping condition
+            end, best_parameters_dict = stopper.early_stop(validation_loss, parameters_dict)
+            if end:
+                # restore the best parameters found
+                model_re.load_state_dict(best_parameters_dict)
+                break
+
+            # save the checkpoint
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
                 save_checkpoint(epoch, model_re)
 
         print("--- training time in seconds: %s ---" % (time.time() - start_time))
 
-        return re_output, epoch_loss_means
+        return re_output, train_loss_mean, validation_loss_mean
 
-    def _validation_re(self, val_in, val_out, model_re):
+    def __validation_re(self, val_in, val_out, model_re, epoch):
 
         b_sz = len(next(iter(val_in))[0])
+        val_in.sampler.set_epoch(epoch)
+        val_out.sampler.set_epoch(epoch)
         model_re.eval()
         loss_sum = 0
 
@@ -110,20 +137,20 @@ class TrainerRe:
             masks.to(self.gpu_id)
             pos = pos.to(self.gpu_id)
             out = out.to(self.gpu_id)
-            embedding = torch.nn.Embedding(self.max_number_pos, 768, padding_idx=0).to(self.gpu_id)
-            predicted_output = model_re(ids, masks, pos, embedding)
+            effective_batch_size = list(ids.size())[0]
+            predicted_output = model_re(ids, masks, pos, self.embedding, effective_batch_size)
             predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
             loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
             loss = loss_fun(predicted_output, out)
-            loss_sum += loss / b_sz
+            loss_sum += loss.item() / b_sz
 
         return loss_sum / len(val_in)
 
     def kfold_cross_validation(self, k):
 
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
-
-        results = []
+        train_means = []
+        validation_means = []
 
         for fold, (train_idx, val_idx) in enumerate(kfold.split(self.train_in)):
             print(f'--- FOLD {fold} ---\n')
@@ -165,17 +192,23 @@ class TrainerRe:
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
 
-            re_output, losses = self.train_re(train_in_loader, train_out_loader, model, optimizer)
-            print(losses)
+            re_output, train_losses, validation_losses = self.__train_re(train_in_loader, train_out_loader,
+                                                                         val_in_loader, val_out_loader,
+                                                                         model, optimizer)
+
+            train_mean = sum(train_losses) / len(train_losses)
+            validation_mean = sum(validation_losses) / len(validation_losses)
+            train_means.append(train_mean)
+            validation_means.append(validation_mean)
 
             # Saving the model
-            save_path = f'model-fold-{fold}.pth'
+            save_path = f'./RE/saves/model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
-            # Evaluation for this fold
-            with torch.no_grad():
-                results.append(self._validation_re(val_in_loader, val_out_loader, model))
+            plot_loss(train_losses, validation_losses, fold)
 
-        print(f'K-FOLD CROSS VALIDATION RESULTS MEAN FOR {k} FOLDS: {sum(losses) / len(losses)}\n')
+        print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
 
-        return re_output
+        print(f'K-FOLD VALIDATION RESULTS MEAN FOR {k} FOLDS:'f' {sum(validation_means) / len(validation_means)}\n\n')
+
+        return re_output, model

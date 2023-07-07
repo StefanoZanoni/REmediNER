@@ -8,7 +8,7 @@ def load_data():
 
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    dataframe = dataframe[:13]  # for debugging
+    dataframe = dataframe[:50]  # for debugging
     dataframe.drop(columns=['indexes'], inplace=True)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
