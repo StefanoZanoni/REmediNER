@@ -123,8 +123,8 @@ def main(rank, world_size, save_every, epochs=10, batch_size=32):
     else:
         data_re = pd.read_csv("../data/re.csv", converters={"annotated_text": literal_eval, 'pos_tags': literal_eval})
 
-    # ner_model = train_ner(data, epochs, batch_size, rank, save_every, world_size)
-    re_model = train_re(data_re, epochs, batch_size, rank, save_every, world_size)
+    ner_model = train_ner(data, epochs, batch_size, rank, save_every, world_size)
+    # re_model = train_re(data_re, epochs, batch_size, rank, save_every, world_size)
 
     destroy_process_group()
 
