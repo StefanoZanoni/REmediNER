@@ -7,7 +7,6 @@ import pandas as pd
 import spacy
 from sklearn.model_selection import train_test_split
 
-
 def mask_texts(texts, drugs, effects, concatenation=False):
     annotations = []
     masked_texts = []
@@ -186,12 +185,10 @@ def split_train_test_re(tokenized_texts, tokenized_pos, output):
         test_in_texts.append(el[0])
         test_in_pos.append(el[1])
 
-
-
     return train_in_texts, train_in_pos, test_in_texts, test_in_pos, train_out, test_out
 
 
-def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len=512):
+def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len=400):
     bert_ids = []
     bert_annotations = []
     bert_masks = []
@@ -227,7 +224,6 @@ def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len=512
 
 
 def compute_pos_indexes(tokenized_pos):
-
     # compute pos indexes
     max_number_pos = set()
     for l in tokenized_pos:
@@ -245,7 +241,7 @@ def compute_pos_indexes(tokenized_pos):
         # SEP
         indexes_local.append(0)
         # PAD
-        for i in range(512 - len(indexes_local)):
+        for i in range(400 - len(indexes_local)):
             indexes_local.append(0)
 
         indexes_global.append(indexes_local)

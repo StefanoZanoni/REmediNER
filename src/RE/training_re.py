@@ -1,3 +1,4 @@
+import os
 import time
 
 import torch
@@ -12,6 +13,8 @@ from src.plot import plot_loss
 
 
 def save_checkpoint(epoch, model):
+    if not os.path.exists('./RE/saves'):
+        os.makedirs('./RE/saves')
     ckp = model.module.state_dict()
     torch.save(ckp, "./RE/saves/checkpoint.pt")
     print(f"Epoch {epoch} | Training checkpoint saved at RE/saves/checkpoint.pt")
@@ -205,7 +208,7 @@ class TrainerRe:
             save_path = f'./RE/saves/model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
-            plot_loss(train_losses, validation_losses, fold)
+            plot_loss(train_losses, validation_losses, fold, 'RE')
 
         print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
 

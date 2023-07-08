@@ -1,4 +1,6 @@
+import os
 import time
+import warnings
 
 import numpy as np
 import torch
@@ -13,8 +15,12 @@ from src.plot import plot_loss, plot_metrics
 
 from matplotlib import pyplot as plt
 import seaborn as sns
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
+from sklearn.exceptions import UndefinedMetricWarning
+warnings.filterwarnings('ignore', category=UndefinedMetricWarning)
+
+id_label = {}
 
 
 def clean_data(true_values, predicted_values):
@@ -32,21 +38,60 @@ def clean_data(true_values, predicted_values):
     return new_true, new_predicted
 
 
+def compute_metrics_mean(mean_dict, current_metrics_dict, dim=None):
+
+    if dim is not None:
+        for key in mean_dict:
+            mean_dict[key]['f1-score'] /= dim
+            mean_dict[key]['precision'] /= dim
+            mean_dict[key]['recall'] /= dim
+            mean_dict[key]['support'] = int(np.floor(mean_dict[key]['support'] / dim))
+    else:
+        for key in mean_dict:
+            if key == 'micro avg' and key not in current_metrics_dict:
+                mean_dict[key]['f1-score'] += current_metrics_dict['accuracy']
+                mean_dict[key]['precision'] += current_metrics_dict['accuracy']
+                mean_dict[key]['recall'] += current_metrics_dict['accuracy']
+                mean_dict[key]['support'] += current_metrics_dict['macro avg']['support']
+            else:
+                mean_dict[key]['f1-score'] += current_metrics_dict[key]['f1-score']
+                mean_dict[key]['precision'] += current_metrics_dict[key]['precision']
+                mean_dict[key]['recall'] += current_metrics_dict[key]['recall']
+                mean_dict[key]['support'] += current_metrics_dict[key]['support']
+
+
+def create_mean_dict():
+    mean_dict = {}
+    for i in range(len(id_label)):
+        mean_dict[id_label[i]] = {}
+        mean_dict['micro avg'] = {}
+        mean_dict['macro avg'] = {}
+        mean_dict['weighted avg'] = {}
+
+    for key in mean_dict:
+        mean_dict[key]['f1-score'] = 0
+        mean_dict[key]['precision'] = 0
+        mean_dict[key]['recall'] = 0
+        mean_dict[key]['support'] = 0
+
+    return mean_dict
+
+
 def scoring(true_values, predicted_values):
     true_values, predicted_values = clean_data(true_values, predicted_values)
-    precisions = []
-    recalls = []
-    f1s = []
     batch_dim = len(true_values)
+    mean_dict = create_mean_dict()
     for true, predicted in zip(true_values, predicted_values):
-        precision = precision_score(true, predicted, average='micro')
-        precisions.append(precision)
-        recall = recall_score(true, predicted, average='micro')
-        recalls.append(recall)
-        f1 = f1_score(true, predicted, average='micro')
-        f1s.append(f1)
+        metrics_dict = classification_report(true, predicted,
+                                             target_names=[id_label[0], id_label[1], id_label[2],
+                                                           id_label[3], id_label[4]],
+                                             labels=[0, 1, 2, 3, 4],
+                                             output_dict=True)
+        compute_metrics_mean(mean_dict, metrics_dict)
 
-    return sum(precisions) / batch_dim, sum(recalls) / batch_dim, sum(f1s) / batch_dim
+    compute_metrics_mean(mean_dict, metrics_dict, dim=batch_dim)
+
+    return mean_dict
 
 
 def confusion_matrix(true_values, predicted_values):
@@ -61,6 +106,8 @@ def confusion_matrix(true_values, predicted_values):
 
 
 def save_checkpoint(epoch, model):
+    if not os.path.exists('./NER/saves'):
+        os.makedirs('./NER/saves')
     ckp = model.module.state_dict()
     torch.save(ckp, "./NER/saves/checkpoint.pt")
     print(f"Epoch {epoch} | Training checkpoint saved at NER/saves/checkpoint.pt")
@@ -107,9 +154,9 @@ class TrainerNer:
         predicted_output = torch.argmax(logits, dim=-1)
         predicted_labels = predicted_output.numpy(force=True)
         true_labels = labels.numpy(force=True)
-        precision, recall, f1 = scoring(true_labels, predicted_labels)
+        metrics_dict = scoring(true_labels, predicted_labels)
 
-        return loss.item(), precision, recall, f1
+        return loss.item(), metrics_dict
 
     def __run_epoch_ner(self, train_in, train_out, epoch, model, optimizer, scheduler):
 
@@ -119,9 +166,7 @@ class TrainerNer:
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
 
         epoch_loss = 0
-        epoch_precision = 0
-        epoch_recall = 0
-        epoch_f1 = 0
+        mean_dict = create_mean_dict()
         train_dim = len(train_in)
 
         for (ids, masks), labels in zip(train_in, train_out):
@@ -129,24 +174,21 @@ class TrainerNer:
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
-            batch_loss, precision, recall, f1 = self.__run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
+            batch_loss, metrics_dict = self.__run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
             epoch_loss += batch_loss / b_sz
-            epoch_precision += precision
-            epoch_recall += recall
-            epoch_f1 += f1
+            compute_metrics_mean(mean_dict, metrics_dict)
 
-        return epoch_loss / train_dim, epoch_precision / train_dim, epoch_recall / train_dim, epoch_f1 / train_dim
+        compute_metrics_mean(mean_dict, metrics_dict, dim=train_dim)
+
+        return epoch_loss / train_dim, mean_dict
 
     def __train_ner(self, train_in, train_out, val_in, val_out, model, optimizer, scheduler):
 
         train_loss_mean = []
-        train_precision_mean = []
-        train_recall_mean = []
-        train_f1_mean = []
+        train_metrics_mean = []
         validation_loss_mean = []
-        validation_precision_mean = []
-        validation_recall_mean = []
-        validation_f1_mean = []
+        validation_metrics_mean = []
+
         stopper = EarlyStopper(patience=3, min_delta=0.005)
 
         start_time = time.time()
@@ -156,21 +198,15 @@ class TrainerNer:
             parameters_dict = model.state_dict()
 
             # training step
-            train_loss, train_precision, train_recall, train_f1 = \
-                self.__run_epoch_ner(train_in, train_out, epoch, model, optimizer, scheduler)
+            train_loss, train_metrics_dict = self.__run_epoch_ner(train_in, train_out, epoch, model, optimizer, scheduler)
             # validation step
             with torch.no_grad():
-                validation_loss, validation_precision, validation_recall, validation_f1 = \
-                    self.__validation_ner(val_in, val_out, model, epoch)
+                validation_loss, validation_metrics_dict = self.__validation_ner(val_in, val_out, model, epoch)
 
             train_loss_mean.append(train_loss)
-            train_precision_mean.append(train_precision)
-            train_recall_mean.append(train_recall)
-            train_f1_mean.append(train_f1)
+            train_metrics_mean.append(train_metrics_dict)
             validation_loss_mean.append(validation_loss)
-            validation_precision_mean.append(validation_precision)
-            validation_recall_mean.append(validation_recall)
-            validation_f1_mean.append(validation_f1)
+            validation_metrics_mean.append(validation_metrics_dict)
 
             # check for early stopping condition
             end, best_parameters_dict = stopper.early_stop(validation_loss, parameters_dict)
@@ -184,8 +220,7 @@ class TrainerNer:
 
         print("--- TRAINING TIME IN SECONDS: %s ---\n" % (time.time() - start_time))
 
-        return train_loss_mean, train_precision_mean, train_recall_mean, train_f1_mean, \
-            validation_loss_mean, validation_precision_mean, validation_recall_mean, validation_f1_mean
+        return train_loss_mean, train_metrics_mean, validation_loss_mean, validation_metrics_mean
 
     def __validation_ner(self, val_in, val_out, model, epoch):
 
@@ -194,9 +229,7 @@ class TrainerNer:
         val_out.sampler.set_epoch(epoch)
         model.eval()
         loss_sum = 0
-        precision = 0
-        recall = 0
-        f1 = 0
+        mean_dict = create_mean_dict()
         val_dim = len(val_in)
 
         for (ids, masks), labels in zip(val_in, val_out):
@@ -213,12 +246,12 @@ class TrainerNer:
             predicted_output = torch.argmax(logits, dim=-1)
             predicted_labels = predicted_output.numpy(force=True)
             true_labels = labels.numpy(force=True)
-            batch_precision, batch_recall, batch_f1 = scoring(true_labels, predicted_labels)
-            precision += batch_precision
-            recall += batch_recall
-            f1 += batch_f1
+            metrics_dict = scoring(true_labels, predicted_labels)
+            compute_metrics_mean(mean_dict, metrics_dict)
 
-        return loss_sum / val_dim, precision / val_dim, recall / val_dim, f1 / val_dim
+        compute_metrics_mean(mean_dict, metrics_dict, dim=val_dim)
+
+        return loss_sum / val_dim, mean_dict
 
     def kfold_cross_validation(self, k):
 
@@ -262,6 +295,7 @@ class TrainerNer:
 
             bert_model = self.bert_model['bert_model']
             len_labels = self.bert_model['len_labels']
+            global id_label
             id_label = self.bert_model['id_label']
             label_id = self.bert_model['label_id']
 
@@ -272,8 +306,7 @@ class TrainerNer:
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
 
-            train_losses, train_precisions, train_recalls, train_f1s, \
-                validation_losses, validation_precisions, validation_recalls, validation_f1s = \
+            train_losses, train_metrics, validation_losses, validation_metrics = \
                 self.__train_ner(train_in_loader, train_out_loader,
                                  val_in_loader, val_out_loader,
                                  model, optimizer, scheduler)
@@ -287,9 +320,8 @@ class TrainerNer:
             save_path = f'./NER/saves/model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
-            plot_loss(train_losses, validation_losses, fold)
-            plot_metrics(train_precisions, train_recalls, train_f1s,
-                         validation_precisions, validation_recalls, validation_f1s, fold)
+            plot_loss(train_losses, validation_losses, fold, 'NER')
+            plot_metrics(train_metrics, validation_metrics, fold)
 
         print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
 

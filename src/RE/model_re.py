@@ -24,21 +24,25 @@ class ReModel(torch.nn.Module):
 
         self.bert = model_bert(bert_name)
 
-        # first piece of bert head: convolution + max pooling + dense
+        # first piece of bert head: convolution + max pooling + convolution + max pooling + dense
         padding = (0, 0)
         dilation = (1, 1)
-        kernel_size = (128, 16)
+        kernel_size = (32, 512)
         stride = (1, 1)
-        self.conv = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size)
-        self.conv_swish = torch.nn.SiLU()
-        h_in = self.hidden_size * 4
-        h_out = ((h_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1
-        pool_h_out = int(np.ceil(h_out / 4))
-        self.conv_max_pool = torch.nn.AdaptiveMaxPool2d(output_size=(context_mean_length, pool_h_out))
+        self.conv1 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size)
+        self.conv_swish1 = torch.nn.SiLU()
+        kernel_size = (4, 4)
+        self.conv_max_pool1 = torch.nn.MaxPool2d(kernel_size=kernel_size)
+
+        kernel_size = (8, 128)
+        self.conv2 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size)
+        self.conv_swish2 = torch.nn.SiLU()
+        pool_h_out = 128
+        self.conv_max_pool2 = torch.nn.AdaptiveMaxPool2d(output_size=(context_mean_length, pool_h_out))
 
         self.conv_flatten = torch.nn.Flatten()
         linear_in_size = int(pool_h_out * context_mean_length)
-        self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=512 * 5)
+        self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=400 * 5)
         self.conv_linear_relu = torch.nn.ReLU()
 
         # second piece of bert head: bilstm + dense
@@ -49,19 +53,19 @@ class ReModel(torch.nn.Module):
 
         # LSTM layer
         hidden_size = 8
-        self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=16,
+        self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=1,
                                   batch_first=True, bidirectional=True, dropout=0.3)
 
         self.lstm_flatten = torch.nn.Flatten()
-        linear_in_size = 512 * hidden_size * 2
-        self.lstm_linear = torch.nn.Linear(in_features=linear_in_size, out_features=512 * 5)
+        linear_in_size = 400 * hidden_size * 2
+        self.lstm_linear = torch.nn.Linear(in_features=linear_in_size, out_features=400 * 5)
         self.lstm_gelu = torch.nn.GELU()
 
         # final dense
-        self.final_linear1 = torch.nn.Linear(in_features=512 * 5 * 2, out_features=512 * 5)
+        self.final_linear1 = torch.nn.Linear(in_features=400 * 5 * 2, out_features=400 * 5)
         self.final_linear1_elu = torch.nn.ELU()
-        self.final_dropout = torch.nn.Dropout()
-        self.final_linear2 = torch.nn.Linear(in_features=512 * 5, out_features=512 * 5)
+        self.final_dropout = torch.nn.Dropout(p=0.3)
+        self.final_linear2 = torch.nn.Linear(in_features=400 * 5, out_features=400 * 5)
         self.final_linear2_elu = torch.nn.ELU()
         self.final_softmax = torch.nn.Softmax(dim=-1)
 
@@ -76,10 +80,13 @@ class ReModel(torch.nn.Module):
         # conv computation
         bert_output_shape = list(bert_output.size())
         conv_input = torch.reshape(bert_output, (bert_output_shape[0], 1, bert_output_shape[1], bert_output_shape[2]))
-        conv_output = self.conv(conv_input)
-        conv_output = self.conv_swish(conv_output)
-        max_pool_out = self.conv_max_pool(conv_output)
-        flatten_out = self.conv_flatten(max_pool_out)
+        conv_output = self.conv1(conv_input)
+        conv_output = self.conv_swish1(conv_output)
+        conv_output = self.conv_max_pool1(conv_output)
+        conv_output = self.conv2(conv_output)
+        conv_output = self.conv_swish2(conv_output)
+        conv_output = self.conv_max_pool2(conv_output)
+        flatten_out = self.conv_flatten(conv_output)
         linear_out = self.conv_linear(flatten_out)
         conv_out = self.conv_linear_relu(linear_out)
 
@@ -98,7 +105,7 @@ class ReModel(torch.nn.Module):
         final_output1 = self.final_dropout(final_output1)
         final_output2 = self.final_linear2(final_output1)
         final_output2 = self.final_linear2_elu(final_output2)
-        final_output2 = torch.reshape(final_output2, shape=(effective_batch_size, 512, 5))
+        final_output2 = torch.reshape(final_output2, shape=(effective_batch_size, 400, 5))
         re_output = self.final_softmax(final_output2)
 
         return re_output
