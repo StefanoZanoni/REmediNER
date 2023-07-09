@@ -5,10 +5,9 @@ from datasets import load_dataset
 
 
 def load_data():
-
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    dataframe = dataframe[:13]  # for debugging
+    # dataframe = dataframe[:13]  # for debugging
     dataframe.drop(columns=['indexes'], inplace=True)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
     dataframe.dropna(inplace=True)
@@ -17,7 +16,6 @@ def load_data():
 
 
 def drop_incorrect_sentences(data):
-
     find_double_index = list()
 
     for idx, item in data.iterrows():
@@ -33,7 +31,6 @@ def drop_incorrect_sentences(data):
 
 
 def pre_process_texts(data):
-
     drop_incorrect_sentences(data)
 
     drugs = data['drug'].unique().tolist()
@@ -72,21 +69,13 @@ def pre_process_texts(data):
     data['effect'] = data['effect'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
 
     # lowercasing all drugs/effect in text
-    new_sents = []
-    for sent, drug, effect in zip(data['text'], data['drug'], data['effect']):
-        new_sent = []
-        for word in sent.split():
-            if word == drug:
-                new_sent.append(drug.lower())
-            elif word == effect:
-                new_sent.append(effect.lower())
-            else:
-                new_sent.append(word)
-        new_sents.append(" ".join(new_sent))
-    data['text'] = new_sents
+    for (i, _), (_, drug), (_, effect) in zip(data['text'].to_frame().iterrows(), data['drug'].to_frame().iterrows(),
+                                              data['effect'].to_frame().iterrows()):
+        drug = drug.drug
+        effect = effect.effect
+        data.at[i, 'text'] = data.at[i, 'text'].replace(drug, drug.lower())
+        data.at[i, 'text'] = data.at[i, 'text'].replace(effect, effect.lower())
 
     # lowercasing all drugs/effects
     data['drug'] = data['drug'].str.lower()
     data['effect'] = data['effect'].str.lower()
-
-
