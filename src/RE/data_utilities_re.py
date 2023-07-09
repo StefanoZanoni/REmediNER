@@ -1,5 +1,4 @@
 import copy
-import re
 import torch
 
 import numpy as np
@@ -7,12 +6,15 @@ import pandas as pd
 import spacy
 from sklearn.model_selection import train_test_split
 
+
 def mask_texts(texts, drugs, effects, concatenation=False):
     annotations = []
     masked_texts = []
 
     annotation = 1
 
+    founded_drugs = set()
+    founded_effects = set()
     for text, drug, effect in zip(texts, drugs, effects):
         masking = []
         new_sent = []
@@ -21,13 +23,15 @@ def mask_texts(texts, drugs, effects, concatenation=False):
         effect = effect.split()
         for idx, w in enumerate(sent):
             if w in drug:
-                if "DRUG" not in new_sent:
+                if "DRUG" not in new_sent and w not in founded_drugs:
                     new_sent.append("DRUG")
                     masking.append(annotation)
+                founded_drugs.add(w)
             elif w in effect:
-                if "EFFECT" not in new_sent:
+                if "EFFECT" not in new_sent and w not in founded_effects:
                     new_sent.append("EFFECT")
                     masking.append(annotation)
+                founded_effects.add(w)
             else:
                 new_sent.append(w)
                 masking.append(0)
@@ -58,7 +62,6 @@ def concatenate_annotations(annotations, concat_number):
 
 
 def add_concatenation(data, data_re, initial_data_size, concat_number):
-    np.random.seed(0)
     # concatenation of concat_number texts and relative labeling
     concatenation_size = int(np.ceil(initial_data_size * 0.33))
     for i in range(concatenation_size):
@@ -74,9 +77,11 @@ def add_concatenation(data, data_re, initial_data_size, concat_number):
 
 
 def prepare_data_for_re(data):
-    # lowercasing vs no-lowercasing?
+    data['text'] = data['text'].str.lower()
     texts = data['text'].values.tolist()
+    data['drug'] = data['drug'].str.lower()
     drugs = data['drug'].values.tolist()
+    data['effect'] = data['effect'].str.lower()
     effects = data['effect'].values.tolist()
     annotation, masked_texts = mask_texts(texts, drugs, effects, concatenation=False)
 
@@ -172,7 +177,7 @@ def split_train_test_re(tokenized_texts, tokenized_pos, output):
     for i in range(len(tokenized_texts)):
         input.append((tokenized_texts[i], tokenized_pos[i]))
     train_in, test_in, train_out, test_out = train_test_split(input, output,
-                                                              test_size=0.1, random_state=0)
+                                                              test_size=0.2, shuffle=True, random_state=0)
 
     train_in_texts = []
     train_in_pos = []
@@ -189,7 +194,31 @@ def split_train_test_re(tokenized_texts, tokenized_pos, output):
     return train_in_texts, train_in_pos, test_in_texts, test_in_pos, train_out, test_out
 
 
-def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len=400):
+def split_test_re(texts_input, pos_input, output):
+    input = []
+    for i in range(len(texts_input)):
+        input.append((texts_input[i], pos_input[i]))
+    test_in_re, test_in_re_final, test_out_re, test_out_re_final = train_test_split(input, output,
+                                                                                    test_size=0.5, shuffle=True,
+                                                                                    random_state=0)
+
+    test_in_re_texts = []
+    test_in_re_pos = []
+    for el in test_in_re:
+        test_in_re_texts.append(el[0])
+        test_in_re_pos.append(el[1])
+
+    test_in_re_texts_final = []
+    test_in_re_pos_final = []
+    for el in test_in_re_final:
+        test_in_re_texts_final.append(el[0])
+        test_in_re_pos_final.append(el[1])
+
+    return test_in_re_texts, test_in_re_pos, test_in_re_texts_final, test_in_re_pos_final,\
+        test_out_re, test_out_re_final
+
+
+def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
     bert_ids = []
     bert_annotations = []
     bert_masks = []
@@ -224,7 +253,7 @@ def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len=400
     return re_ids, re_masks, re_annotations
 
 
-def compute_pos_indexes(tokenized_pos):
+def compute_pos_indexes(tokenized_pos, input_length):
     # compute pos indexes
     max_number_pos = set()
     for l in tokenized_pos:
@@ -241,9 +270,13 @@ def compute_pos_indexes(tokenized_pos):
             indexes_local.append(pos_indexes[pos])
         # SEP
         indexes_local.append(0)
-        # PAD
-        for i in range(400 - len(indexes_local)):
-            indexes_local.append(0)
+        # padding
+        if len(indexes_local) < input_length:
+            for i in range(input_length - len(indexes_local)):
+                indexes_local.append(0)
+        # truncation
+        if len(indexes_local) > input_length:
+            indexes_local = indexes_local[:input_length]
 
         indexes_global.append(indexes_local)
 

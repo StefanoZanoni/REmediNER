@@ -37,7 +37,8 @@ class TrainerRe:
                  gpu_id: int,
                  save_every: int,
                  world_size: int,
-                 max_number_pos: int
+                 max_number_pos: int,
+                 input_length: int
                  ) -> None:
         self.bert_name = bert_name
         self.gpu_id = gpu_id
@@ -49,6 +50,7 @@ class TrainerRe:
         self.save_evey = save_every
         self.world_size = world_size
         self.max_number_pos = max_number_pos
+        self.input_length = input_length
         self.embedding = torch.nn.Embedding(self.max_number_pos, 768, padding_idx=0).to(self.gpu_id)
 
     def __run_batch_re(self, ids, masks, pos, train_output, model_re, optimizer):
@@ -189,7 +191,7 @@ class TrainerRe:
                                                                    num_replicas=self.world_size,
                                                                    rank=self.gpu_id))
 
-            model = ReModel(self.bert_name, self.context_mean_length, self.batch_size)
+            model = ReModel(self.bert_name, self.context_mean_length, self.batch_size, self.input_length)
             model.apply(reset_parameters)
             optimizer = model.get_optimizer()
             model.to(self.gpu_id)

@@ -76,9 +76,17 @@ def get_labels_id(data):
 def split_train_test_ner(data):
     input = data['text'].to_frame()
     output = data['iob'].to_frame()
-    train_in, test_in, train_out, test_out = train_test_split(input, output, test_size=0.1, random_state=0)
+    train_in, test_in, train_out, test_out = \
+        train_test_split(input, output, test_size=0.2, shuffle=True, random_state=0)
 
     return train_in, test_in, train_out, test_out
+
+
+def split_test_ner(input, output):
+    test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final = \
+        train_test_split(input, output, test_size=0.5, shuffle=True, random_state=0)
+
+    return test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final
 
 
 def tokenize_text_ner(texts, labels, tokenizer):
@@ -120,7 +128,7 @@ def tokenize_text_ner(texts, labels, tokenizer):
     return tokenized_texts, tokenized_labels
 
 
-def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_len=128):
+def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_len):
     bert_ids = []
     bert_masks = []
     bert_labels = []
@@ -179,7 +187,6 @@ def convert_to_list(column, name):
 
 
 def prepare_data_for_ner(data):
-    np.random.seed(0)
     new_data = copy.copy(data)
     convert_to_list(new_data['drug'].to_frame(), 'drug')
     convert_to_list(new_data['effect'].to_frame(), 'effect')

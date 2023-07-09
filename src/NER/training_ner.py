@@ -119,7 +119,7 @@ class TrainerNer:
                  batch_size: int,
                  gpu_id: int,
                  save_every: int,
-                 world_size: int
+                 world_size: int,
                  ) -> None:
         self.gpu_id = gpu_id
         self.bert_model = bert_model
@@ -193,8 +193,9 @@ class TrainerNer:
             parameters_dict = model.state_dict()
 
             # training step
-            train_loss, train_metrics_dict, train_cm = self.__run_epoch_ner(train_in, train_out, epoch, model, optimizer,
-                                                                  scheduler)
+            train_loss, train_metrics_dict, train_cm = self.__run_epoch_ner(train_in, train_out, epoch, model,
+                                                                            optimizer,
+                                                                            scheduler)
             # validation step
             with torch.no_grad():
                 validation_loss, validation_metrics_dict, val_cm = self.__validation_ner(val_in, val_out, model, epoch)
@@ -218,7 +219,7 @@ class TrainerNer:
 
         print(f'---[GPU{self.gpu_id}] TRAINING TIME IN SECONDS: %s ---\n\n' % (time.time() - start_time))
 
-        return train_loss_mean, train_metrics_mean, validation_loss_mean, validation_metrics_mean,\
+        return train_loss_mean, train_metrics_mean, validation_loss_mean, validation_metrics_mean, \
             train_cm_mean / self.epochs, val_cm_mean / self.epochs
 
     def __validation_ner(self, val_in, val_out, model, epoch):

@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from transformers import BertModel
 
 
@@ -15,12 +14,13 @@ def model_bert(model_name):
 
 class ReModel(torch.nn.Module):
 
-    def __init__(self, bert_name, context_mean_length, batch_size):
+    def __init__(self, bert_name, context_mean_length, batch_size, input_size):
         super(ReModel, self).__init__()
 
         self.context_mean_length = context_mean_length
         self.hidden_size = 768
         self.batch_size = batch_size
+        self.input_size = input_size
 
         self.bert = model_bert(bert_name)
 
@@ -42,7 +42,7 @@ class ReModel(torch.nn.Module):
 
         self.conv_flatten = torch.nn.Flatten()
         linear_in_size = int(pool_h_out * context_mean_length)
-        self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=400 * 5)
+        self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
         self.conv_linear_relu = torch.nn.ReLU()
 
         # second piece of bert head: bilstm + dense
@@ -54,18 +54,18 @@ class ReModel(torch.nn.Module):
         # LSTM layer
         hidden_size = 8
         self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=1,
-                                  batch_first=True, bidirectional=True, dropout=0.3)
+                                  batch_first=True, bidirectional=True)
 
         self.lstm_flatten = torch.nn.Flatten()
-        linear_in_size = 400 * hidden_size * 2
-        self.lstm_linear = torch.nn.Linear(in_features=linear_in_size, out_features=400 * 5)
+        linear_in_size = self.input_size * hidden_size * 2
+        self.lstm_linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
         self.lstm_gelu = torch.nn.GELU()
 
         # final dense
-        self.final_linear1 = torch.nn.Linear(in_features=400 * 5 * 2, out_features=400 * 5)
+        self.final_linear1 = torch.nn.Linear(in_features=self.input_size * 5 * 2, out_features=self.input_size * 5)
         self.final_linear1_elu = torch.nn.ELU()
         self.final_dropout = torch.nn.Dropout(p=0.3)
-        self.final_linear2 = torch.nn.Linear(in_features=400 * 5, out_features=400 * 5)
+        self.final_linear2 = torch.nn.Linear(in_features=self.input_size * 5, out_features=self.input_size * 5)
         self.final_linear2_elu = torch.nn.ELU()
         self.final_softmax = torch.nn.Softmax(dim=-1)
 
@@ -105,7 +105,7 @@ class ReModel(torch.nn.Module):
         final_output1 = self.final_dropout(final_output1)
         final_output2 = self.final_linear2(final_output1)
         final_output2 = self.final_linear2_elu(final_output2)
-        final_output2 = torch.reshape(final_output2, shape=(effective_batch_size, 400, 5))
+        final_output2 = torch.reshape(final_output2, shape=(effective_batch_size, self.input_size, 5))
         re_output = self.final_softmax(final_output2)
 
         return re_output
