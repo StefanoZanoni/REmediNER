@@ -1,33 +1,51 @@
 import copy
 import re
 
+import numpy as np
 import torch
 from nltk import TreebankWordTokenizer
 from sklearn.model_selection import train_test_split
 
 
-def iob_tagging(text, drug, effect, twt):
-    start_d, end_d = re.search(re.escape(drug), text).span()
-    start_e, end_e = re.search(re.escape(effect), text).span()
+def iob_tagging(text, drugs, effects, twt):
+    ds = []
+    es = []
+    for drug in drugs:
+        start, end = re.search(re.escape(drug), text).span()
+        ds.append((start, end))
+    for effect in effects:
+        start, end = re.search(re.escape(effect), text).span()
+        es.append((start, end))
     span_list = twt.span_tokenize(text)
 
     entities = ['Drug', 'Effect']
 
     iob_list = []
+
     i = 0
     for start, end in span_list:
-        iob_tag = 'O'
-        if start == start_d or start == start_e:
-            iob_tag = 'B'
-            if start == start_d:
-                i = 0
-            else:
-                i = 1
-        elif (start_d < start and end <= end_d) or (start_e < start and end <= end_e):
-            iob_tag = 'I'
+        temp_iob_list = []
+        for (start_d, end_d), (start_e, end_e) in zip(ds, es):
+            iob_tag = 'O'
+            if start == start_d or start == start_e:
+                iob_tag = 'B'
+                if start == start_d:
+                    i = 0
+                else:
+                    i = 1
+            elif (start_d < start and end <= end_d) or (start_e < start and end <= end_e):
+                iob_tag = 'I'
 
-        if iob_tag != 'O':
-            iob_tag += '-{}'.format(entities[i])
+            if iob_tag != 'O':
+                iob_tag += '-{}'.format(entities[i])
+
+            temp_iob_list.append(iob_tag)
+
+        for j in range(len(temp_iob_list)):
+            if 'B' in temp_iob_list[j]:
+                iob_tag = temp_iob_list[j]
+            elif 'I' in temp_iob_list[j]:
+                iob_tag = temp_iob_list[j]
 
         iob_list.append(iob_tag)
 
@@ -135,3 +153,46 @@ def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_l
     ner_labels = torch.tensor(bert_labels, dtype=torch.long)
 
     return ner_ids, ner_masks, ner_labels
+
+
+def concatenate_texts(texts, concat_number):
+    result = ''
+    for i in range(concat_number):
+        result = result + ' ' + texts[i]
+
+    return result
+
+
+def concatenate_drugs_effects(drugs, effects, concat_number):
+    concatenated_drugs = []
+    concatenated_effects = []
+    for i in range(concat_number):
+        concatenated_drugs.append(drugs[i])
+        concatenated_effects.append(effects[i])
+
+    return concatenated_drugs, concatenated_effects
+
+
+def convert_to_list(column, name):
+    for i, row in column.iterrows():
+        column.at[i, name] = [row[name]]
+
+
+def prepare_data_for_ner(data):
+    np.random.seed(0)
+    new_data = copy.copy(data)
+    convert_to_list(new_data['drug'].to_frame(), 'drug')
+    convert_to_list(new_data['effect'].to_frame(), 'effect')
+    concatenation_size = int(np.ceil(len(data) * 0.33))
+    for concat_number in range(2, 5):
+        for i in range(concatenation_size):
+            random_row_indexes = [np.random.randint(low=0, high=len(data)) for _ in range(concat_number)]
+            rows = data.iloc[random_row_indexes]
+            texts = rows['text'].values.tolist()
+            drugs = rows['drug'].values.tolist()
+            effects = rows['effect'].values.tolist()
+            concatenated_text = concatenate_texts(texts, concat_number)
+            concatenated_drugs, concatenated_effects = concatenate_drugs_effects(drugs, effects, concat_number)
+            new_data.loc[len(new_data)] = [concatenated_text, concatenated_drugs, concatenated_effects]
+
+    return new_data
