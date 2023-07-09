@@ -58,6 +58,7 @@ def concatenate_annotations(annotations, concat_number):
 
 
 def add_concatenation(data, data_re, initial_data_size, concat_number):
+    np.random.seed(0)
     # concatenation of concat_number texts and relative labeling
     concatenation_size = int(np.ceil(initial_data_size * 0.33))
     for i in range(concatenation_size):

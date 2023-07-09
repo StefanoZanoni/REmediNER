@@ -122,7 +122,7 @@ class TrainerRe:
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
                 save_checkpoint(epoch, model_re)
 
-        print("--- training time in seconds: %s ---" % (time.time() - start_time))
+        print(f'---[GPU{self.gpu_id}] TRAINING TIME IN SECONDS: %s ---\n\n' % (time.time() - start_time))
 
         return re_output, train_loss_mean, validation_loss_mean
 

@@ -15,9 +15,11 @@ def plot_heat_map(train_cm, val_cm, fold):
     train_heatmap = sns.heatmap(train_cm, annot=True)
     train_fig = train_heatmap.get_figure()
     train_fig.savefig(f'./NER/plots/Heat maps/Training heat map fold{fold}')
+    plt.clf()
     val_heatmap = sns.heatmap(val_cm, annot=True)
     val_fig = val_heatmap.get_figure()
     val_fig.savefig(f'./NER/plots/Heat maps/Validation heat map fold{fold}')
+    plt.clf()
 
 
 def plot_loss(training_data, validation_data, fold, task):
@@ -34,6 +36,7 @@ def plot_loss(training_data, validation_data, fold, task):
     plt.ylabel('Loss')
     plt.legend()
     plt.savefig(f'./{task}/plots/Losses/Loss-Fold{fold}.png')
+    plt.clf()
 
 
 def plot_metrics(training_metrics, validation_metrics, fold):

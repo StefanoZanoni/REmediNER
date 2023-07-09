@@ -12,11 +12,12 @@ from torchsummary import summary
 
 from src.data_utilities import load_data, pre_process_texts
 from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
-    tokenize_text_ner, get_ner_inputs
+    tokenize_text_ner, get_ner_inputs, prepare_data_for_ner
 from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_context_mean_length, tokenize_text_re, \
     split_train_test_re, get_re_inputs, compute_pos_indexes
 from src.NER.training_ner import TrainerNer
 from src.RE.training_re import TrainerRe
+from src.FINALMODEL.final_model import FinalModel
 
 bert_name = 'emilyalsentzer/Bio_ClinicalBERT'
 tokenizer = BertTokenizerFast.from_pretrained(bert_name)
@@ -108,23 +109,26 @@ def main(rank, world_size, save_every, epochs=10, batch_size=32):
 
     if not os.path.exists('../data'):
         os.makedirs('../data')
-    if not os.path.exists("../data/ner.csv"):
-        data = load_data()
-        pre_process_texts(data)
-        compute_iob(data)
-        data.to_csv("../data/ner.csv", index=False)
-    else:
-        data = pd.read_csv("../data/ner.csv")
 
+    if not os.path.exists("../data/ner.csv"):
+        data_ner = load_data()
+        pre_process_texts(data_ner)
+        data_ner = prepare_data_for_ner(data_ner)
+        compute_iob(data_ner)
+        data_ner.to_csv("../data/ner.csv", index=False)
+    else:
+        data_ner = pd.read_csv("../data/ner.csv", converters={'drug': literal_eval, 'effect': literal_eval})
     if not os.path.exists("../data/re.csv"):
-        data_re = prepare_data_for_re(data)
+        data_ner = load_data()
+        data_re = prepare_data_for_re(data_ner)
         compute_pos(data_re)
         data_re.to_csv("../data/re.csv", index=False)
     else:
-        data_re = pd.read_csv("../data/re.csv", converters={"annotated_text": literal_eval, 'pos_tags': literal_eval})
+        data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
-    ner_model = train_ner(data, epochs, batch_size, rank, save_every, world_size)
+    ner_model = train_ner(data_ner, epochs, batch_size, rank, save_every, world_size)
     # re_model = train_re(data_re, epochs, batch_size, rank, save_every, world_size)
+    # final_model = FinalModel(ner_model, re_model)
 
     destroy_process_group()
 
