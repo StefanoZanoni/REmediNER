@@ -70,3 +70,23 @@ def pre_process_texts(data):
     data['text'] = data['text'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
     data['drug'] = data['drug'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
     data['effect'] = data['effect'].str.replace(r'(\b\w)\s*=\s*', r'\1=', regex=True)
+
+    # lowercasing all drugs/effect in text
+    new_sents = []
+    for sent, drug, effect in zip(data['text'], data['drug'], data['effect']):
+        new_sent = []
+        for word in sent.split():
+            if word == drug:
+                new_sent.append(drug.lower())
+            elif word == effect:
+                new_sent.append(effect.lower())
+            else:
+                new_sent.append(word)
+        new_sents.append(" ".join(new_sent))
+    data['text'] = new_sents
+
+    # lowercasing all drugs/effects
+    data['drug'] = data['drug'].str.lower()
+    data['effect'] = data['effect'].str.lower()
+
+
