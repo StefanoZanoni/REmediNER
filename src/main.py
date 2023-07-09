@@ -53,9 +53,10 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
     # RE training
     re_trainer = TrainerRe(bert_name, context_mean_length, inputs_train_re, outputs_train_re, epochs,
                            batch_size, rank, save_every, world_size, max_number_pos, input_length)
-    re_output, re_model = re_trainer.kfold_cross_validation(k=2)
+    re_output, re_model = re_trainer.kfold_cross_validation(k=10)
     summary(re_model,
-            input_size=[(batch_size, input_length), (batch_size, input_length), (batch_size, input_length), 1, batch_size],
+            input_size=[(batch_size, input_length), (batch_size, input_length), (batch_size, input_length), 1,
+                        batch_size],
             dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor', 'Object', 'Int'])
 
     # final test data
@@ -94,7 +95,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
                   'label_id': label_id}
     ner_trainer = TrainerNer(bert_model, inputs_train_ner, outputs_train_ner,
                              epochs, batch_size, rank, save_every, world_size)
-    ner_model = ner_trainer.kfold_cross_validation(k=2)
+    ner_model = ner_trainer.kfold_cross_validation(k=10)
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
