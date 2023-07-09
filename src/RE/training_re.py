@@ -210,7 +210,8 @@ class TrainerRe:
             save_path = f'./RE/saves/model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
-            plot_loss(train_losses, validation_losses, fold, 'RE')
+            if self.gpu_id == 0:
+                plot_loss(train_losses, validation_losses, fold, 'RE')
 
         print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
 

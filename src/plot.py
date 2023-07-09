@@ -8,9 +8,9 @@ import seaborn as sns
 
 def plot_heat_map(train_cm, val_cm, fold):
     if not os.path.exists(f'./NER/plots'):
-        os.makedirs(f'./NER/plots')
+        os.makedirs(f'./NER/plots', exist_ok=True)
     if not os.path.exists(f'./NER/plots/Heat maps'):
-        os.makedirs(f'./NER/plots/Heat maps')
+        os.makedirs(f'./NER/plots/Heat maps', exist_ok=True)
 
     train_heatmap = sns.heatmap(train_cm, annot=True)
     train_fig = train_heatmap.get_figure()
@@ -24,9 +24,9 @@ def plot_heat_map(train_cm, val_cm, fold):
 
 def plot_loss(training_data, validation_data, fold, task):
     if not os.path.exists(f'./{task}/plots'):
-        os.makedirs(f'./{task}/plots')
+        os.makedirs(f'./{task}/plots', exist_ok=True)
     if not os.path.exists(f'./{task}/plots/Losses'):
-        os.makedirs(f'./{task}/plots/Losses')
+        os.makedirs(f'./{task}/plots/Losses', exist_ok=True)
 
     num_epochs = np.arange(1, len(training_data) + 1)
     plt.plot(num_epochs, training_data, 'g', label='Training loss')
@@ -41,7 +41,7 @@ def plot_loss(training_data, validation_data, fold, task):
 
 def plot_metrics(training_metrics, validation_metrics, fold):
     if not os.path.exists('./NER/plots/Metrics'):
-        os.makedirs('./NER/plots/Metrics')
+        os.makedirs('./NER/plots/Metrics', exist_ok=True)
 
     num_epochs = np.arange(1, len(training_metrics) + 1)
 
@@ -61,7 +61,7 @@ def plot_metrics(training_metrics, validation_metrics, fold):
 
     for key in train_entities:
         if not os.path.exists(f'./NER/plots/Metrics/{key}'):
-            os.makedirs(f'./NER/plots/Metrics/{key}')
+            os.makedirs(f'./NER/plots/Metrics/{key}', exist_ok=True)
         f1_train, f1_val = None, None
         precision_train, precision_val = None, None
         recall_train, recall_val = None, None
@@ -87,12 +87,3 @@ def plot_metrics(training_metrics, validation_metrics, fold):
         plt.legend()
         plt.savefig(f'./NER/plots/Metrics/{key}/ Metrics-Fold{fold}.png')
         plt.clf()
-
-# def plot_test(test_data):
-#     num_epochs = np.arange(1, len(training_data) + 1)
-#     plt.plot(num_epochs, training_data, 'g', label='Training loss')
-#     plt.title('Test loss')
-#     plt.xlabel('Epochs')
-#     plt.ylabel('Loss')
-#     plt.legend()
-#     plt.show()

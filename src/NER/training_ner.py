@@ -322,9 +322,10 @@ class TrainerNer:
             save_path = f'./NER/saves/model-fold-{fold}.pth'
             torch.save(model.state_dict(), save_path)
 
-            plot_loss(train_losses, validation_losses, fold, 'NER')
-            plot_metrics(train_metrics, validation_metrics, fold)
-            plot_heat_map(train_cm, val_cm, fold)
+            if self.gpu_id == 0:
+                plot_loss(train_losses, validation_losses, fold, 'NER')
+                plot_metrics(train_metrics, validation_metrics, fold)
+                plot_heat_map(train_cm, val_cm, fold)
 
         print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
 
