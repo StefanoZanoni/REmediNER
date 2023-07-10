@@ -9,20 +9,26 @@ from matplotlib.pyplot import figure
 figure(figsize=(10, 8), dpi=100)
 
 
-def plot_heat_map(train_cm, val_cm, fold):
+def plot_heat_map(test_cm, fold=None, train_cm=None):
     if not os.path.exists(f'./NER/plots'):
         os.makedirs(f'./NER/plots', exist_ok=True)
     if not os.path.exists(f'./NER/plots/Heat maps'):
         os.makedirs(f'./NER/plots/Heat maps', exist_ok=True)
 
-    train_heatmap = sns.heatmap(train_cm, annot=True)
-    train_fig = train_heatmap.get_figure()
-    train_fig.savefig(f'./NER/plots/Heat maps/Training heat map fold{fold}')
-    plt.clf()
-    val_heatmap = sns.heatmap(val_cm, annot=True)
-    val_fig = val_heatmap.get_figure()
-    val_fig.savefig(f'./NER/plots/Heat maps/Validation heat map fold{fold}')
-    plt.clf()
+    if train_cm is not None:
+        train_heatmap = sns.heatmap(train_cm, annot=True)
+        train_fig = train_heatmap.get_figure()
+        train_fig.savefig(f'./NER/plots/Heat maps/Training heat map fold{fold}')
+        plt.clf()
+        val_heatmap = sns.heatmap(test_cm, annot=True)
+        val_fig = val_heatmap.get_figure()
+        val_fig.savefig(f'./NER/plots/Heat maps/Validation heat map fold{fold}')
+        plt.clf()
+    else:
+        test_heatmap = sns.heatmap(test_cm, annot=True)
+        test_fig = test_heatmap.get_figure()
+        test_fig.savefig(f'./NER/plots/Heat maps/Test heat map')
+        plt.clf()
 
 
 def plot_loss(training_data, validation_data, fold, task):

@@ -23,8 +23,8 @@ class NerModel(torch.nn.Module):
 
     def get_optimizer(self):
         optimizer = torch.optim.AdamW(NerModel.parameters(self),
-                                      lr=1e-3,  # args.learning_rate - default is 5e-5
-                                      eps=1e-4  # args.adam_epsilon  - default is 1e-8.
+                                      lr=1e-4,  # args.learning_rate - default is 5e-5
+                                      eps=1e-5  # args.adam_epsilon  - default is 1e-8.
                                       )
         return optimizer
 

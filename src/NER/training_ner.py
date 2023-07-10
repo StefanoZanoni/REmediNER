@@ -2,6 +2,7 @@ import os
 import time
 import warnings
 
+import numpy
 import numpy as np
 import torch
 
@@ -16,10 +17,12 @@ from src.plot import plot_loss, plot_metrics, plot_heat_map
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 from sklearn.exceptions import UndefinedMetricWarning
+from sklearn.utils.class_weight import compute_class_weight
 
 warnings.filterwarnings('ignore', category=UndefinedMetricWarning)
 
 id_label = {}
+label_id = {}
 
 
 def clean_data(true_values, predicted_values):
@@ -73,6 +76,22 @@ def create_mean_dict():
         mean_dict[key]['support'] = 0
 
     return mean_dict
+
+
+def get_classes_weight(true):
+    unique = np.unique(true)
+    classes = [id_label[unique[i]] for i in range(len(unique))]
+    classes = [label_id[el] for el in classes]
+    classes = np.array(classes)
+    print(id_label, label_id)
+    classes_weights = compute_class_weight(class_weight='balanced', classes=classes, y=true)
+    label_weight = {el: classes_weights[i] for i, el in enumerate(classes)}
+    for key in label_id:
+        if label_id[key] not in label_weight:
+            label_weight[label_id[key]] = 0
+            classes_weights = numpy.insert(classes_weights, label_id[key], 0)
+
+    return classes_weights
 
 
 def scoring(true_values, predicted_values):
@@ -175,7 +194,7 @@ class TrainerNer:
 
         return epoch_loss / train_dim, mean_dict, cm / train_dim
 
-    def __train_ner(self, train_in, train_out, model, optimizer, scheduler, val_in=None, val_out=None,):
+    def __train_ner(self, train_in, train_out, model, optimizer, scheduler, val_in=None, val_out=None, ):
 
         train_loss_mean = []
         train_metrics_mean = []
@@ -199,7 +218,8 @@ class TrainerNer:
             if val_in is not None or val_out is not None:
                 # validation step
                 with torch.no_grad():
-                    validation_loss, validation_metrics_dict, val_cm = self.__validation_ner(val_in, val_out, model, epoch)
+                    validation_loss, validation_metrics_dict, val_cm = self.__validation_ner(val_in, val_out, model,
+                                                                                             epoch)
 
                 validation_loss_mean.append(validation_loss)
                 validation_metrics_mean.append(validation_metrics_dict)
@@ -307,7 +327,7 @@ class TrainerNer:
 
             bert_model = self.bert_model['bert_model']
             len_labels = self.bert_model['len_labels']
-            global id_label
+            global id_label, label_id
             id_label = self.bert_model['id_label']
             label_id = self.bert_model['label_id']
 
@@ -335,7 +355,7 @@ class TrainerNer:
             if self.gpu_id == 0:
                 plot_loss(train_losses, validation_losses, fold, 'NER')
                 plot_metrics(train_metrics, validation_metrics, fold)
-                plot_heat_map(train_cm, val_cm, fold)
+                plot_heat_map(val_cm, fold, train_cm)
 
         print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
 

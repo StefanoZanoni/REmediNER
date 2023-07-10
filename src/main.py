@@ -10,6 +10,8 @@ from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 from torchsummary import summary
 
+from src.NER.testing import test_ner
+from src.RE.testing import test_re
 from src.data_utilities import load_data, pre_process_texts
 from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
     tokenize_text_ner, get_ner_inputs, prepare_data_for_ner, split_test_ner
@@ -60,6 +62,7 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
             input_size=[(batch_size, input_length), (batch_size, input_length), (batch_size, input_length), 1,
                         batch_size],
             dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor', 'Object', 'Int'])
+    test_re(inputs_test_re, outputs_test_re, re_model, batch_size, world_size, rank, max_number_pos)
 
     # final test data
     _, _, test_re_annotations = \
@@ -103,9 +106,11 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
-
+    test_ner(inputs_test_ner, outputs_test_ner, ner_model, batch_size, world_size, rank, id_label)
+    
     # final test data
-    tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final, tokenizer)
+    tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
+                                                                            tokenizer)
     ner_ids, ner_masks, _ = \
         get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer, label_id, input_length)
     inputs_test_ner_final = TensorDataset(ner_ids, ner_masks)
@@ -150,7 +155,7 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
     ner_model, final_inputs = train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
-    re_model, final_outputs = train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
+    # re_model, final_outputs = train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
     # final_model = FinalModel(ner_model, re_model)
 
     destroy_process_group()
@@ -158,6 +163,7 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
 
 if __name__ == '__main__':
     import sys
+
     epochs = int(sys.argv[1])
     batch_size = int(sys.argv[2])
     save_every = int(sys.argv[3])
@@ -167,3 +173,5 @@ if __name__ == '__main__':
     mp.spawn(main,
              args=(world_size, save_every, epochs, batch_size, ner_input_length, re_input_length,),
              nprocs=world_size)
+
+# [0, 0, 0, 1, 4, 0, 0, 0, 2, 3, 3, 0, 0]
