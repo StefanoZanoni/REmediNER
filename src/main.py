@@ -10,8 +10,10 @@ from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 from torchsummary import summary
 
-from src.NER.testing import test_ner
-from src.RE.testing import test_re
+from src.FINALMODEL.final_model import FinalModel
+from src.FINALMODEL.testing_final import test_final
+from src.NER.testing_ner import test_ner
+from src.RE.testing_re import test_re
 from src.data_utilities import load_data, pre_process_texts
 from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
     tokenize_text_ner, get_ner_inputs, prepare_data_for_ner, split_test_ner
@@ -19,7 +21,6 @@ from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_c
     split_train_test_re, get_re_inputs, compute_pos_indexes, split_test_re
 from src.NER.training_ner import TrainerNer
 from src.RE.training_re import TrainerRe
-from src.FINALMODEL.final_model import FinalModel
 
 bert_name = 'emilyalsentzer/Bio_ClinicalBERT'
 tokenizer = BertTokenizerFast.from_pretrained(bert_name)
@@ -115,7 +116,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
         get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer, label_id, input_length)
     inputs_test_ner_final = TensorDataset(ner_ids, ner_masks)
 
-    return ner_model, inputs_test_ner_final
+    return ner_model, inputs_test_ner_final, id_label
 
 
 def ddp_setup(rank: int, world_size: int):
@@ -154,9 +155,14 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
     else:
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
-    ner_model, final_inputs = train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
-    # re_model, final_outputs = train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
-    # final_model = FinalModel(ner_model, re_model)
+    ner_model, final_inputs, id_label = \
+        train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
+
+    re_model, final_outputs = \
+        train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
+
+    final_model = FinalModel(ner_model, re_model, tokenizer, id_label, rank, re_input_length)
+    test_final(final_model, final_inputs, final_outputs)
 
     destroy_process_group()
 
@@ -173,5 +179,3 @@ if __name__ == '__main__':
     mp.spawn(main,
              args=(world_size, save_every, epochs, batch_size, ner_input_length, re_input_length,),
              nprocs=world_size)
-
-# [0, 0, 0, 1, 4, 0, 0, 0, 2, 3, 3, 0, 0]
