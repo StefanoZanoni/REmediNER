@@ -5,6 +5,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
 
+from matplotlib.pyplot import figure
+figure(figsize=(10, 8), dpi=100)
+
 
 def plot_heat_map(train_cm, val_cm, fold):
     if not os.path.exists(f'./NER/plots'):
