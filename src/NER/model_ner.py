@@ -23,7 +23,7 @@ class NerModel(torch.nn.Module):
 
     def get_optimizer(self):
         optimizer = torch.optim.AdamW(NerModel.parameters(self),
-                                      lr=1e-4,  # args.learning_rate - default is 5e-5
+                                      lr=3e-5,  # args.learning_rate - default is 5e-5
                                       eps=1e-7  # args.adam_epsilon  - default is 1e-8.
                                       )
         return optimizer
@@ -31,7 +31,7 @@ class NerModel(torch.nn.Module):
     def get_scheduler(self, num_steps_training):
         scheduler = get_linear_schedule_with_warmup(
             self.get_optimizer(),
-            num_warmup_steps=0,
+            num_warmup_steps=5,
             num_training_steps=num_steps_training
         )
         return scheduler

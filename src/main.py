@@ -56,7 +56,7 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
     # RE training
     re_trainer = TrainerRe(bert_name, context_mean_length, inputs_train_re, outputs_train_re, epochs,
                            batch_size, rank, save_every, world_size, max_number_pos, input_length)
-    re_output, max_epoch = re_trainer.kfold_cross_validation(k=5)
+    re_output, max_epoch = re_trainer.kfold_cross_validation(k=2)
     # retrain on the whole development set
     re_model = re_trainer.re_train(max_epoch)
     summary(re_model,
@@ -101,7 +101,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
                   'label_id': label_id}
     ner_trainer = TrainerNer(bert_model, inputs_train_ner, outputs_train_ner,
                              epochs, batch_size, rank, save_every, world_size)
-    max_epoch = ner_trainer.kfold_cross_validation(k=5)
+    max_epoch = ner_trainer.kfold_cross_validation(k=2)
     # retrain on the whole development set
     ner_model = ner_trainer.re_train(max_epoch)
     summary(ner_model,
@@ -162,7 +162,7 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
         train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
 
     final_model = FinalModel(ner_model, re_model, tokenizer, id_label, rank, re_input_length)
-    test_final(final_model, final_inputs, final_outputs)
+    test_final(final_model, final_inputs, final_outputs, batch_size, world_size, rank)
 
     destroy_process_group()
 

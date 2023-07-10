@@ -1,6 +1,7 @@
 import spacy
 import torch
 
+
 def compute_pos(batch_output_ner):
     nlp = spacy.load("en_core_web_sm")
     batch_pos = []
@@ -32,7 +33,7 @@ class FinalModel(torch.nn.Module):
         ids = ids.tolist()
         output_ner = self.__convert_output_to_masked_text(entities, ids)
         ids, masks, pos, max_number_pos = self.__prepare_re_inputs(output_ner)
-        embedding = torch.nn.Embedding(max_number_pos, 768, padding_idx=0)
+        embedding = torch.nn.Embedding(max_number_pos, 768, padding_idx=0).to(self.gpu_id)
         ids.to(self.gpu_id)
         masks.to(self.gpu_id)
         pos.to(self.gpu_id)
@@ -64,12 +65,18 @@ class FinalModel(torch.nn.Module):
                     new_entities.append(new_label_id['EFFECT'])
             batch_new_entities.append(new_entities)
 
-        batch_tokens = tokenizer.convert_ids_to_tokens(ids)
+        batch_tokens = []
+        for l in ids:
+            batch_tokens.append(tokenizer.convert_ids_to_tokens(l))
+
         for batch, tokens in enumerate(batch_tokens):
+            indexes_to_remove = []
             for i, token in enumerate(tokens):
                 if token == '[CLS]' or token == '[SEP]' or token == '[PAD]':
-                    del batch_tokens[batch][i]
-                    del batch_new_entities[batch][i]
+                    indexes_to_remove.append(i)
+            for i, index in enumerate(indexes_to_remove):
+                del batch_tokens[batch][index - i]
+                del batch_new_entities[batch][index - i]
 
         for batch, tokens in enumerate(batch_tokens):
             for i, token in enumerate(tokens):
@@ -82,21 +89,25 @@ class FinalModel(torch.nn.Module):
         batch_texts = []
         for batch, tokens in enumerate(batch_tokens):
             text = []
-            new_token = None
+            new_token = ''
+            de_append = False
             for i, token in enumerate(tokens):
                 if token.startswith('##'):
                     new_token += token.replace('##', '')
-                else:
-                    if token != 'DRUG' and token != 'EFFECT':
-                        if new_token is not None:
-                            text.append(new_token)
-                            new_token = token
-                        else:
-                            text.append(token)
-                    else:
+                elif token != 'DRUG' and token != 'EFFECT':
+                    if new_token != '':
+                        text.append(new_token)
                         new_token = token
+                        de_append = False
+                    else:
+                        text.append(token)
+                        de_append = False
+                else:
+                    if not de_append:
+                        text.append(token)
+                        de_append = True
 
-            batch_texts.append(text)
+            batch_texts.append(' '.join(text))
 
         return batch_texts
 
@@ -104,7 +115,7 @@ class FinalModel(torch.nn.Module):
         batch_pos = compute_pos(batch_output_ner)
         batch_tokenized_texts, batch_tokenized_pos = self.__tokenize_inputs_re(batch_output_ner, batch_pos)
         pos, max_number_pos = self.__compute_pos_indexes(batch_tokenized_pos)
-        ids, masks = self.get_re_inputs(batch_tokenized_texts)
+        ids, masks = self.__get_re_inputs(batch_tokenized_texts)
 
         return ids, masks, pos, max_number_pos
 
@@ -113,7 +124,7 @@ class FinalModel(torch.nn.Module):
         bert_masks = []
         max_len = self.re_input_length
 
-        for text in zip(batch_tokenized_texts):
+        for text in batch_tokenized_texts:
             tokenized_text = ["[CLS]"] + text + ["[SEP]"]
 
             # truncation
