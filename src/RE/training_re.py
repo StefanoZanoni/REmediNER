@@ -1,6 +1,7 @@
 import os
 import time
 
+import numpy as np
 import torch
 
 from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler, DistributedSampler
@@ -89,7 +90,7 @@ class TrainerRe:
 
         return batch_re_output, epoch_loss / len(train_in)
 
-    def __train_re(self, train_in, train_out, val_in, val_out, model_re, optimizer):
+    def __train_re(self, train_in, train_out, model_re, optimizer, val_in=None, val_out=None):
 
         train_loss_mean = []
         validation_loss_mean = []
@@ -105,20 +106,26 @@ class TrainerRe:
             # training step
             batch_re_output, epoch_loss = \
                 self.__run_epoch_re(train_in, train_out, model_re, optimizer, epoch)
-            # validation step
-            with torch.no_grad():
-                validation_loss = self.__validation_re(val_in, val_out, model_re, epoch)
 
-            train_loss_mean.append(epoch_loss)
-            validation_loss_mean.append(validation_loss)
-            re_output.extend(batch_re_output)
+            if val_in is not None or val_out is not None:
+                # validation step
+                with torch.no_grad():
+                    validation_loss = self.__validation_re(val_in, val_out, model_re, epoch)
 
-            # check for early stopping condition
-            end, best_parameters_dict = stopper.early_stop(validation_loss, parameters_dict)
-            if end:
-                # restore the best parameters found
-                model_re.load_state_dict(best_parameters_dict)
-                break
+                validation_loss_mean.append(validation_loss)
+
+                train_loss_mean.append(epoch_loss)
+                re_output.extend(batch_re_output)
+
+                # check for early stopping condition
+                end, best_parameters_dict = stopper.early_stop(validation_loss, parameters_dict)
+                if end:
+                    # restore the best parameters found
+                    model_re.load_state_dict(best_parameters_dict)
+                    break
+            else:
+                train_loss_mean.append(epoch_loss)
+                re_output.extend(batch_re_output)
 
             # save the checkpoint
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
@@ -126,7 +133,10 @@ class TrainerRe:
 
         print(f'---[GPU{self.gpu_id}] TRAINING TIME IN SECONDS: %s ---\n\n' % (time.time() - start_time))
 
-        return re_output, train_loss_mean, validation_loss_mean
+        if val_in is not None or val_out is not None:
+            return re_output, train_loss_mean, validation_loss_mean, epoch
+        else:
+            return re_output, train_loss_mean
 
     def __validation_re(self, val_in, val_out, model_re, epoch):
 
@@ -156,6 +166,7 @@ class TrainerRe:
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
         train_means = []
         validation_means = []
+        epochs = []
 
         for fold, (train_idx, val_idx) in enumerate(kfold.split(self.train_in)):
             print(f'--- FOLD {fold} ---\n')
@@ -197,10 +208,10 @@ class TrainerRe:
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
 
-            re_output, train_losses, validation_losses = self.__train_re(train_in_loader, train_out_loader,
-                                                                         val_in_loader, val_out_loader,
-                                                                         model, optimizer)
+            re_output, train_losses, validation_losses, max_epoch = \
+                self.__train_re(train_in_loader, train_out_loader, model, optimizer, val_in_loader, val_out_loader)
 
+            epochs.append(max_epoch)
             train_mean = sum(train_losses) / len(train_losses)
             validation_mean = sum(validation_losses) / len(validation_losses)
             train_means.append(train_mean)
@@ -217,4 +228,32 @@ class TrainerRe:
 
         print(f'K-FOLD VALIDATION RESULTS MEAN FOR {k} FOLDS:'f' {sum(validation_means) / len(validation_means)}\n\n')
 
-        return re_output, model
+        return re_output, int(np.floor(sum(epochs) / k))
+
+    def re_train(self, max_epoch):
+
+        train_in_loader = DataLoader(self.train_in,
+                                     batch_size=self.batch_size,
+                                     pin_memory=True,
+                                     shuffle=False,
+                                     sampler=DistributedSampler(self.train_in,
+                                                                num_replicas=self.world_size,
+                                                                rank=self.gpu_id))
+        train_out_loader = DataLoader(self.train_out,
+                                      batch_size=self.batch_size,
+                                      pin_memory=True,
+                                      shuffle=False,
+                                      sampler=DistributedSampler(self.train_out,
+                                                                 num_replicas=self.world_size,
+                                                                 rank=self.gpu_id))
+
+        model = ReModel(self.bert_name, self.context_mean_length, self.batch_size, self.input_length)
+        model.apply(reset_parameters)
+        optimizer = model.get_optimizer()
+        model.to(self.gpu_id)
+        model = DDP(model, device_ids=[self.gpu_id])
+
+        self.epochs = max_epoch
+        _, _ = self.__train_re(train_in_loader, train_out_loader, model, optimizer)
+
+        return model

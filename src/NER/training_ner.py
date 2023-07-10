@@ -341,7 +341,7 @@ class TrainerNer:
 
         print(f'K-FOLD VALIDATION RESULTS MEAN FOR {k} FOLDS:'f' {sum(validation_means) / len(validation_means)}\n\n')
 
-        return model, int(np.floor(sum(epochs) / k))
+        return int(np.floor(sum(epochs) / k))
 
     def re_train(self, max_epoch):
 
