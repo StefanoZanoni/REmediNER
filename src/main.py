@@ -139,7 +139,7 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
         compute_iob(data_ner)
         data_ner.to_csv("../data/ner.csv", index=False)
     else:
-        data_ner = pd.read_csv("../data/ner.csv", converters={'drug': literal_eval, 'effect': literal_eval})
+        data_ner = pd.read_csv("../data/ner.csv", dtype={'drug': object, 'effect': object})
     if not os.path.exists("../data/re.csv"):
         data_re = load_data()
         pre_process_texts(data_re)
@@ -149,7 +149,7 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
     else:
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
-    # ner_model, final_inputs = train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
+    ner_model, final_inputs = train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
     re_model, final_outputs = train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
     # final_model = FinalModel(ner_model, re_model)
 
