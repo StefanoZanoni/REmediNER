@@ -95,7 +95,9 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
                   'label_id': label_id}
     ner_trainer = TrainerNer(bert_model, inputs_train_ner, outputs_train_ner,
                              epochs, batch_size, rank, save_every, world_size)
-    ner_model = ner_trainer.kfold_cross_validation(k=10)
+    ner_model, max_epoch = ner_trainer.kfold_cross_validation(k=10)
+    # retrain on the whole development set
+    ner_model = ner_trainer.re_train(max_epoch)
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
@@ -126,7 +128,7 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
     ddp_setup(rank, world_size)
 
     if not os.path.exists('../data'):
-        os.makedirs('../data')
+        os.makedirs('../data', exist_ok=True)
 
     if not os.path.exists("../data/ner.csv"):
         data_ner = load_data()
@@ -146,7 +148,7 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
     ner_model, final_inputs = train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
-    re_model, final_outputs = train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
+    # re_model, final_outputs = train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
     # final_model = FinalModel(ner_model, re_model)
 
     destroy_process_group()

@@ -175,7 +175,7 @@ class TrainerNer:
 
         return epoch_loss / train_dim, mean_dict, cm / train_dim
 
-    def __train_ner(self, train_in, train_out, val_in, val_out, model, optimizer, scheduler):
+    def __train_ner(self, train_in, train_out, model, optimizer, scheduler, val_in=None, val_out=None,):
 
         train_loss_mean = []
         train_metrics_mean = []
@@ -196,31 +196,40 @@ class TrainerNer:
             train_loss, train_metrics_dict, train_cm = self.__run_epoch_ner(train_in, train_out, epoch, model,
                                                                             optimizer,
                                                                             scheduler)
-            # validation step
-            with torch.no_grad():
-                validation_loss, validation_metrics_dict, val_cm = self.__validation_ner(val_in, val_out, model, epoch)
+            if val_in is not None or val_out is not None:
+                # validation step
+                with torch.no_grad():
+                    validation_loss, validation_metrics_dict, val_cm = self.__validation_ner(val_in, val_out, model, epoch)
 
-            train_loss_mean.append(train_loss)
-            train_metrics_mean.append(train_metrics_dict)
-            validation_loss_mean.append(validation_loss)
-            validation_metrics_mean.append(validation_metrics_dict)
-            train_cm_mean += train_cm
-            val_cm_mean += val_cm
+                validation_loss_mean.append(validation_loss)
+                validation_metrics_mean.append(validation_metrics_dict)
+                val_cm_mean += val_cm
 
-            # check for early stopping condition
-            end, best_parameters_dict = stopper.early_stop(validation_loss, parameters_dict)
-            if end:
-                # restore the best parameters found
-                model.load_state_dict(best_parameters_dict)
-                break
+                train_loss_mean.append(train_loss)
+                train_metrics_mean.append(train_metrics_dict)
+                train_cm_mean += train_cm
+
+                # check for early stopping condition
+                end, best_parameters_dict = stopper.early_stop(validation_loss, parameters_dict)
+                if end:
+                    # restore the best parameters found
+                    model.load_state_dict(best_parameters_dict)
+                    break
+            else:
+                train_loss_mean.append(train_loss)
+                train_metrics_mean.append(train_metrics_dict)
+                train_cm_mean += train_cm
 
             if self.gpu_id == 0 and epoch % self.save_evey == 0:
                 save_checkpoint(epoch, model)
 
         print(f'---[GPU{self.gpu_id}] TRAINING TIME IN SECONDS: %s ---\n\n' % (time.time() - start_time))
 
-        return train_loss_mean, train_metrics_mean, validation_loss_mean, validation_metrics_mean, \
-            train_cm_mean / self.epochs, val_cm_mean / self.epochs
+        if val_in is not None or val_out is not None:
+            return train_loss_mean, train_metrics_mean, validation_loss_mean, validation_metrics_mean, \
+                train_cm_mean / self.epochs, val_cm_mean / self.epochs, epoch
+        else:
+            return train_loss_mean, train_metrics_mean, train_cm_mean / self.epochs
 
     def __validation_ner(self, val_in, val_out, model, epoch):
 
@@ -260,6 +269,7 @@ class TrainerNer:
         kfold = KFold(n_splits=k, shuffle=True, random_state=0)
         train_means = []
         validation_means = []
+        epochs = []
 
         for fold, (train_idx, val_idx) in enumerate(kfold.split(self.train_in)):
             print(f'--- FOLD {fold} ---\n')
@@ -308,11 +318,11 @@ class TrainerNer:
             model.to(self.gpu_id)
             model = DDP(model, device_ids=[self.gpu_id])
 
-            train_losses, train_metrics, validation_losses, validation_metrics, train_cm, val_cm = \
-                self.__train_ner(train_in_loader, train_out_loader,
-                                 val_in_loader, val_out_loader,
-                                 model, optimizer, scheduler)
+            train_losses, train_metrics, validation_losses, validation_metrics, train_cm, val_cm, max_epoch = \
+                self.__train_ner(train_in_loader, train_out_loader, model, optimizer, scheduler,
+                                 val_in_loader, val_out_loader)
 
+            epochs.append(max_epoch)
             train_mean = sum(train_losses) / len(train_losses)
             validation_mean = sum(validation_losses) / len(validation_losses)
             train_means.append(train_mean)
@@ -330,5 +340,40 @@ class TrainerNer:
         print(f'K-FOLD TRAIN RESULTS MEAN FOR {k} FOLDS:'f' {sum(train_means) / len(train_means)}\n\n')
 
         print(f'K-FOLD VALIDATION RESULTS MEAN FOR {k} FOLDS:'f' {sum(validation_means) / len(validation_means)}\n\n')
+
+        return model, int(np.floor(sum(epochs) / k))
+
+    def re_train(self, max_epoch):
+
+        train_in_loader = DataLoader(self.train_in,
+                                     batch_size=self.batch_size,
+                                     pin_memory=True,
+                                     shuffle=False,
+                                     sampler=DistributedSampler(self.train_in,
+                                                                num_replicas=self.world_size,
+                                                                rank=self.gpu_id))
+        train_out_loader = DataLoader(self.train_out,
+                                      batch_size=self.batch_size,
+                                      pin_memory=True,
+                                      shuffle=False,
+                                      sampler=DistributedSampler(self.train_out,
+                                                                 num_replicas=self.world_size,
+                                                                 rank=self.gpu_id))
+
+        bert_model = self.bert_model['bert_model']
+        len_labels = self.bert_model['len_labels']
+        global id_label
+        id_label = self.bert_model['id_label']
+        label_id = self.bert_model['label_id']
+
+        model = NerModel(bert_model, len_labels, id_label, label_id)
+        model.apply(reset_parameters)
+        optimizer = model.get_optimizer()
+        scheduler = model.get_scheduler(self.epochs * len(self.train_in) / self.batch_size)
+        model.to(self.gpu_id)
+        model = DDP(model, device_ids=[self.gpu_id])
+
+        self.epochs = max_epoch
+        _, _, _ = self.__train_ner(train_in_loader, train_out_loader, model, optimizer, scheduler)
 
         return model
