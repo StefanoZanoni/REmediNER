@@ -45,7 +45,7 @@ def test(test_in, test_out, model, id_label, gpu_id):
         loss_fun = torch.nn.CrossEntropyLoss().to(gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss = loss_fun(logits, labels)
-        loss_sum += loss.item() / b_sz
+        loss_sum += loss.item()
         logits = torch.transpose(logits, dim0=1, dim1=2)
         predicted_output = torch.argmax(logits, dim=-1)
         predicted_labels = predicted_output.numpy(force=True)

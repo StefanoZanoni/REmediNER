@@ -56,7 +56,7 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
     # RE training
     re_trainer = TrainerRe(bert_name, context_mean_length, inputs_train_re, outputs_train_re, epochs,
                            batch_size, rank, save_every, world_size, max_number_pos, input_length)
-    re_output, max_epoch = re_trainer.kfold_cross_validation(k=2)
+    re_output, max_epoch = re_trainer.kfold_cross_validation(k=5)
     # retrain on the whole development set
     re_model = re_trainer.re_train(max_epoch)
     summary(re_model,
@@ -101,7 +101,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
                   'label_id': label_id}
     ner_trainer = TrainerNer(bert_model, inputs_train_ner, outputs_train_ner,
                              epochs, batch_size, rank, save_every, world_size)
-    max_epoch = ner_trainer.kfold_cross_validation(k=2)
+    max_epoch = ner_trainer.kfold_cross_validation(k=5)
     # retrain on the whole development set
     ner_model = ner_trainer.re_train(max_epoch)
     summary(ner_model,

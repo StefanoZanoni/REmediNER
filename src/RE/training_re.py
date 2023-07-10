@@ -85,7 +85,7 @@ class TrainerRe:
             pos = pos.to(self.gpu_id)
             out = out.to(self.gpu_id)
             batch_re_output, batch_loss = self.__run_batch_re(ids, masks, pos, out, model_re, optimizer)
-            epoch_loss += batch_loss / b_sz
+            epoch_loss += batch_loss
             epoch_re_output.append(batch_re_output)
 
         return batch_re_output, epoch_loss / len(train_in)
@@ -157,7 +157,7 @@ class TrainerRe:
             predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
             loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
             loss = loss_fun(predicted_output, out)
-            loss_sum += loss.item() / b_sz
+            loss_sum += loss.item()
 
         return loss_sum / len(val_in)
 

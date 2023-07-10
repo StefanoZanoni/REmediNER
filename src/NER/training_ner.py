@@ -186,7 +186,7 @@ class TrainerNer:
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
             batch_loss, metrics_dict, cm = self.__run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
-            epoch_loss += batch_loss / b_sz
+            epoch_loss += batch_loss
             compute_metrics_mean(mean_dict, metrics_dict)
             mean_cm += cm
 
@@ -271,7 +271,7 @@ class TrainerNer:
             loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
             logits = torch.transpose(logits, dim0=1, dim1=2)
             loss = loss_fun(logits, labels)
-            loss_sum += loss.item() / b_sz
+            loss_sum += loss.item()
             logits = torch.transpose(logits, dim0=1, dim1=2)
             predicted_output = torch.argmax(logits, dim=-1)
             predicted_labels = predicted_output.numpy(force=True)
