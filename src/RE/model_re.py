@@ -52,12 +52,12 @@ class ReModel(torch.nn.Module):
         # (Sequence Length, Batch Size, Input Dimension).
 
         # LSTM layer
-        hidden_size = 8
-        self.lstm = torch.nn.LSTM(input_size=3840, hidden_size=hidden_size, num_layers=1,
+        lstm_hidden_size = 8
+        self.lstm = torch.nn.LSTM(input_size=self.hidden_size * 5, hidden_size=lstm_hidden_size, num_layers=1,
                                   batch_first=True, bidirectional=True)
 
         self.lstm_flatten = torch.nn.Flatten()
-        linear_in_size = self.input_size * hidden_size * 2
+        linear_in_size = self.input_size * lstm_hidden_size * 2
         self.lstm_linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
         self.lstm_gelu = torch.nn.GELU()
 

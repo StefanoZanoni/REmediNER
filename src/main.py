@@ -10,8 +10,6 @@ from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 from torchsummary import summary
 
-from src.FINALMODEL.final_model import FinalModel
-from src.FINALMODEL.testing_final import test_final
 from src.NER.testing_ner import test_ner
 from src.RE.testing_re import test_re
 from src.data_utilities import load_data, pre_process_texts
@@ -22,15 +20,23 @@ from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_c
 from src.NER.training_ner import TrainerNer
 from src.RE.training_re import TrainerRe
 
-bert_name = 'emilyalsentzer/Bio_ClinicalBERT'
-tokenizer = BertTokenizerFast.from_pretrained(bert_name)
+# bert_name_ner = "d4data/biomedical-ner-all"
+# bert_name_ner = "ukkendane/bert-medical-ner"
+bert_name_ner = 'emilyalsentzer/Bio_ClinicalBERT'
+# bert_name_ner = "bert-base-uncased"
+# bert_name_ner = "bert-base-cased"
+# bert_name_ner = "bert-large-uncased"
+# bert_name_ner = "bert-large-cased"
+bert_name_re = 'bert-base-cased'
+tokenizer_ner = BertTokenizerFast.from_pretrained(bert_name_ner)
+tokenizer_re = BertTokenizerFast.from_pretrained(bert_name_re)
 
 transformers.utils.logging.set_verbosity_error()
 
 
 def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_length):
     # RE data
-    tokenized_texts, tokenized_annotation, tokenized_pos = tokenize_text_re(data_re, tokenizer)
+    tokenized_texts, tokenized_annotation, tokenized_pos = tokenize_text_re(data_re, tokenizer_re)
     pos_indexes, max_number_pos = compute_pos_indexes(tokenized_pos, input_length)
     train_in_texts_re, train_in_pos_re, test_in_texts_re, test_in_pos_re, \
         train_out_re, test_out_re = split_train_test_re(tokenized_texts, pos_indexes, tokenized_annotation)
@@ -39,14 +45,14 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
 
     # train data
     train_re_ids, train_re_masks, train_re_annotations = \
-        get_re_inputs(train_in_texts_re, train_out_re, tokenizer, input_length)
+        get_re_inputs(train_in_texts_re, train_out_re, tokenizer_re, input_length)
     train_in_pos_re = torch.tensor(train_in_pos_re, dtype=torch.int32)
     inputs_train_re = TensorDataset(train_re_ids, train_re_masks, train_in_pos_re)
     outputs_train_re = TensorDataset(train_re_annotations)
 
     # test data
     test_re_ids, test_re_masks, test_re_annotations = \
-        get_re_inputs(test_in_texts_re, test_out_re, tokenizer, input_length)
+        get_re_inputs(test_in_texts_re, test_out_re, tokenizer_re, input_length)
     test_in_pos_re = torch.tensor(test_in_pos_re, dtype=torch.int32)
     inputs_test_re = TensorDataset(test_re_ids, test_re_masks, test_in_pos_re)
     outputs_test_re = TensorDataset(test_re_annotations)
@@ -54,7 +60,7 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
     context_mean_length = compute_context_mean_length(data_re)
 
     # RE training
-    re_trainer = TrainerRe(bert_name, context_mean_length, inputs_train_re, outputs_train_re, epochs,
+    re_trainer = TrainerRe(bert_name_re, context_mean_length, inputs_train_re, outputs_train_re, epochs,
                            batch_size, rank, save_every, world_size, max_number_pos, input_length)
     re_output, max_epoch = re_trainer.kfold_cross_validation(k=5)
     # retrain on the whole development set
@@ -67,7 +73,7 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
 
     # final test data
     _, _, test_re_annotations = \
-        get_re_inputs(test_in_texts_re_final, test_out_re_final, tokenizer, input_length)
+        get_re_inputs(test_in_texts_re_final, test_out_re_final, tokenizer_re, input_length)
     outputs_test_re_final = TensorDataset(test_re_annotations)
 
     return re_model, outputs_test_re_final
@@ -81,21 +87,21 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
 
     # train data
     tokenized_texts_train_ner, tokenized_labels_train_ner = tokenize_text_ner(train_in_ner, train_out_ner,
-                                                                              tokenizer)
+                                                                              tokenizer_ner)
     ner_ids, ner_masks, ner_labels = \
-        get_ner_inputs(tokenized_texts_train_ner, tokenized_labels_train_ner, tokenizer, label_id, input_length)
+        get_ner_inputs(tokenized_texts_train_ner, tokenized_labels_train_ner, tokenizer_ner, label_id, input_length)
     inputs_train_ner = TensorDataset(ner_ids, ner_masks)
     outputs_train_ner = TensorDataset(ner_labels)
 
     # test data
-    tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner, test_out_ner, tokenizer)
+    tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner, test_out_ner, tokenizer_ner)
     ner_ids, ner_masks, ner_labels = \
-        get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer, label_id, input_length)
+        get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer_ner, label_id, input_length)
     inputs_test_ner = TensorDataset(ner_ids, ner_masks)
     outputs_test_ner = TensorDataset(ner_labels)
 
     # NER training
-    bert_model = {'bert_model': bert_name,
+    bert_model = {'bert_model': bert_name_ner,
                   'len_labels': len_labels,
                   'id_label': id_label,
                   'label_id': label_id}
@@ -111,9 +117,9 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
     
     # final test data
     tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
-                                                                            tokenizer)
+                                                                            tokenizer_ner)
     ner_ids, ner_masks, _ = \
-        get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer, label_id, input_length)
+        get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer_ner, label_id, input_length)
     inputs_test_ner_final = TensorDataset(ner_ids, ner_masks)
 
     return ner_model, inputs_test_ner_final, id_label
@@ -132,7 +138,8 @@ def ddp_setup(rank: int, world_size: int):
 
 
 def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
-    global bert_name
+    global bert_name_re
+    global bert_name_ner
     ddp_setup(rank, world_size)
 
     if not os.path.exists('../data'):
@@ -155,12 +162,12 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
     else:
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
-    ner_model, final_inputs, id_label = \
-        train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
+    # ner_model, final_inputs, id_label = \
+    #     train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
 
-    # re_model, final_outputs = \
-    #     train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
-    #
+    re_model, final_outputs = \
+        train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
+
     # final_model = FinalModel(ner_model, re_model, tokenizer, id_label, rank, re_input_length)
     # test_final(final_model, final_inputs, final_outputs, batch_size, world_size, rank)
 
