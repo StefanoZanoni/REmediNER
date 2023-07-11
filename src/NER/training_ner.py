@@ -30,8 +30,8 @@ def clean_data(true_values, predicted_values):
     for i in range(true_values.shape[0]):
         true = true_values[i]
         predicted = predicted_values[i]
-        predicted[true == -100] = label_id['O']
-        true[true == -100] = label_id['O']
+        true = np.delete(true, np.where(true == -100))
+        predicted = np.delete(predicted, np.where(true == -100))
         new_true.append(true)
         new_predicted.append(predicted)
 
