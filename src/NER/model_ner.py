@@ -75,7 +75,7 @@ class NerModel(torch.nn.Module):
         self.conv_flatten = torch.nn.Flatten()
         linear_in_size = h_out * w_out
         self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
-        self.conv_linear_relu = torch.nn.ReLU()
+        self.conv_linear_gelu = torch.nn.GELU()
 
         self.softmax = torch.nn.Softmax(dim=-1)
 
@@ -109,7 +109,7 @@ class NerModel(torch.nn.Module):
         conv_output = self.conv_max_pool3(conv_output)
         flatten_out = self.conv_flatten(conv_output)
         linear_out = self.conv_linear(flatten_out)
-        logits = self.conv_linear_relu(linear_out)
+        logits = self.conv_linear_gelu(linear_out)
 
         logits = torch.reshape(logits, shape=(effective_batch_size, self.input_size, 5))
         entities_distribution = self.softmax(logits)

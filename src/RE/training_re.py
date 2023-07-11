@@ -30,7 +30,6 @@ def reset_parameters(model):
 class TrainerRe:
     def __init__(self,
                  bert_name: str,
-                 context_mean_length: int,
                  train_in: TensorDataset,
                  train_out: TensorDataset,
                  epochs: int,
@@ -43,7 +42,6 @@ class TrainerRe:
                  ) -> None:
         self.bert_name = bert_name
         self.gpu_id = gpu_id
-        self.context_mean_length = context_mean_length
         self.train_in = train_in
         self.train_out = train_out
         self.epochs = epochs
@@ -140,7 +138,6 @@ class TrainerRe:
 
     def __validation_re(self, val_in, val_out, model_re, epoch):
 
-        b_sz = len(next(iter(val_in))[0])
         val_in.sampler.set_epoch(epoch)
         val_out.sampler.set_epoch(epoch)
         model_re.eval()
@@ -202,7 +199,7 @@ class TrainerRe:
                                                                    num_replicas=self.world_size,
                                                                    rank=self.gpu_id))
 
-            model = ReModel(self.bert_name, self.context_mean_length, self.batch_size, self.input_length)
+            model = ReModel(self.bert_name, self.batch_size, self.input_length)
             model.apply(reset_parameters)
             optimizer = model.get_optimizer()
             model.to(self.gpu_id)
@@ -247,7 +244,7 @@ class TrainerRe:
                                                                  num_replicas=self.world_size,
                                                                  rank=self.gpu_id))
 
-        model = ReModel(self.bert_name, self.context_mean_length, self.batch_size, self.input_length)
+        model = ReModel(self.bert_name, self.batch_size, self.input_length)
         model.apply(reset_parameters)
         optimizer = model.get_optimizer()
         model.to(self.gpu_id)
