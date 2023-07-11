@@ -93,7 +93,8 @@ def scoring(true_values, predicted_values):
     for true, predicted in zip(true_values, predicted_values):
         true, predicted = convert_to_labels(true, predicted, id_label)
         metrics_dict = classification_report(true, predicted,
-                                             target_names=[id_label[0], id_label[1], id_label[2], id_label[3], id_label[4]],
+                                             target_names=[id_label[0], id_label[1], id_label[2], id_label[3],
+                                                           id_label[4]],
                                              labels=[id_label[0], id_label[1], id_label[2], id_label[3], id_label[4]],
                                              output_dict=True)
         compute_metrics_mean(mean_dict, metrics_dict)
@@ -132,7 +133,7 @@ class TrainerNer:
                  gpu_id: int,
                  save_every: int,
                  world_size: int,
-                 input_length: int
+                 input_length: int,
                  ) -> None:
         self.gpu_id = gpu_id
         self.bert_model = bert_model
@@ -249,7 +250,6 @@ class TrainerNer:
 
     def __validation_ner(self, val_in, val_out, model, epoch):
 
-        b_sz = len(next(iter(val_in))[0])
         val_in.sampler.set_epoch(epoch)
         val_out.sampler.set_epoch(epoch)
         model.eval()
@@ -323,7 +323,6 @@ class TrainerNer:
                                                                    rank=self.gpu_id))
 
             bert_model = self.bert_model['bert_model']
-            len_labels = self.bert_model['len_labels']
             global id_label, label_id
             id_label = self.bert_model['id_label']
             label_id = self.bert_model['label_id']
@@ -378,10 +377,8 @@ class TrainerNer:
                                                                  rank=self.gpu_id))
 
         bert_model = self.bert_model['bert_model']
-        len_labels = self.bert_model['len_labels']
         global id_label
         id_label = self.bert_model['id_label']
-        label_id = self.bert_model['label_id']
 
         model = NerModel(bert_model, self.input_length)
         model.apply(reset_parameters)

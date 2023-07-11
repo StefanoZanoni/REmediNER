@@ -60,8 +60,8 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
     context_mean_length = compute_context_mean_length(data_re)
 
     # RE training
-    re_trainer = TrainerRe(bert_name_re, context_mean_length, inputs_train_re, outputs_train_re, epochs,
-                           batch_size, rank, save_every, world_size, max_number_pos, input_length)
+    re_trainer = TrainerRe(bert_name_re, inputs_train_re, outputs_train_re, epochs, batch_size, rank, save_every,
+                           world_size, max_number_pos, input_length)
     re_output, max_epoch = re_trainer.kfold_cross_validation(k=5)
     # retrain on the whole development set
     re_model = re_trainer.re_train(max_epoch)
@@ -114,7 +114,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
     test_ner(inputs_test_ner, outputs_test_ner, ner_model, batch_size, world_size, rank, id_label)
-    
+
     # final test data
     tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
                                                                             tokenizer_ner)
