@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import pandas as pd
 
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -14,17 +15,21 @@ def plot_heat_map(test_cm, fold=None, train_cm=None):
         os.makedirs(f'./NER/plots', exist_ok=True)
     if not os.path.exists(f'./NER/plots/Heat maps'):
         os.makedirs(f'./NER/plots/Heat maps', exist_ok=True)
+    labels = ['O', 'B-Drug', 'B-Effect', 'I-Drug', 'I-Effect']
 
     if train_cm is not None:
+        train_cm = pd.DataFrame(train_cm, index=labels, columns=labels)
         train_heatmap = sns.heatmap(train_cm, annot=True)
         train_fig = train_heatmap.get_figure()
         train_fig.savefig(f'./NER/plots/Heat maps/Training heat map fold{fold}')
         plt.clf()
+        test_cm = pd.DataFrame(test_cm, index=labels, columns=labels)
         val_heatmap = sns.heatmap(test_cm, annot=True)
         val_fig = val_heatmap.get_figure()
         val_fig.savefig(f'./NER/plots/Heat maps/Validation heat map fold{fold}')
         plt.clf()
     else:
+        test_cm = pd.DataFrame(test_cm, index=labels, columns=labels)
         test_heatmap = sns.heatmap(test_cm, annot=True)
         test_fig = test_heatmap.get_figure()
         test_fig.savefig(f'./NER/plots/Heat maps/Test heat map')
