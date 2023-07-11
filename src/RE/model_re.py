@@ -111,7 +111,7 @@ class ReModel(torch.nn.Module):
         return re_output
 
     def forward(self, ids, masks, pos, embedding, effective_batch_size):
-        bert_output = self.bert(ids, masks, output_hidden_states=True)
+        bert_output = self.bert(ids, attention_mask=masks, return_dict=False, output_hidden_states=True)
 
         # concatenate the last four hidden states
         bert_output = bert_output.hidden_states

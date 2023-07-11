@@ -132,6 +132,7 @@ class TrainerNer:
                  gpu_id: int,
                  save_every: int,
                  world_size: int,
+                 input_length: int
                  ) -> None:
         self.gpu_id = gpu_id
         self.bert_model = bert_model
@@ -141,12 +142,14 @@ class TrainerNer:
         self.batch_size = batch_size
         self.save_evey = save_every
         self.world_size = world_size
+        self.input_length = input_length
 
     def __run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
 
         model.train()
         optimizer.zero_grad()
-        logits, entities_vector = model(ids, masks)
+        effective_batch_size = list(ids.size())[0]
+        logits, entities_vector = model(ids, masks, effective_batch_size)
         loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss = loss_fun(logits, labels)
@@ -260,7 +263,8 @@ class TrainerNer:
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
-            logits, entities_vector = model(ids, masks)
+            effective_batch_size = list(ids.size())[0]
+            logits, entities_vector = model(ids, masks, effective_batch_size)
             loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
             logits = torch.transpose(logits, dim0=1, dim1=2)
             loss = loss_fun(logits, labels)
@@ -324,7 +328,7 @@ class TrainerNer:
             id_label = self.bert_model['id_label']
             label_id = self.bert_model['label_id']
 
-            model = NerModel(bert_model, len_labels, id_label, label_id)
+            model = NerModel(bert_model, self.input_length)
             model.apply(reset_parameters)
             optimizer = model.get_optimizer()
             scheduler = model.get_scheduler(self.epochs * len(train_subsampler) / self.batch_size)
@@ -379,7 +383,7 @@ class TrainerNer:
         id_label = self.bert_model['id_label']
         label_id = self.bert_model['label_id']
 
-        model = NerModel(bert_model, len_labels, id_label, label_id)
+        model = NerModel(bert_model, self.input_length)
         model.apply(reset_parameters)
         optimizer = model.get_optimizer()
         scheduler = model.get_scheduler(self.epochs * len(self.train_in) / self.batch_size)

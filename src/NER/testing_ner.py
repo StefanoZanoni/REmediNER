@@ -41,7 +41,7 @@ def test(test_in, test_out, model, id_label, gpu_id):
         ids = ids.to(gpu_id)
         masks = masks.to(gpu_id)
         labels = labels.to(gpu_id)
-        logits, entities_vector = model(ids, masks)
+        logits, entities_vector = model(ids, masks, b_sz)
         loss_fun = torch.nn.CrossEntropyLoss().to(gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss = loss_fun(logits, labels)

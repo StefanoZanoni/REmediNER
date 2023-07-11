@@ -22,9 +22,9 @@ from src.RE.training_re import TrainerRe
 
 # bert_name_ner = "d4data/biomedical-ner-all"
 # bert_name_ner = "ukkendane/bert-medical-ner"
-bert_name_ner = 'emilyalsentzer/Bio_ClinicalBERT'
+# bert_name_ner = 'emilyalsentzer/Bio_ClinicalBERT'
 # bert_name_ner = "bert-base-uncased"
-# bert_name_ner = "bert-base-cased"
+bert_name_ner = "bert-base-cased"
 # bert_name_ner = "bert-large-uncased"
 # bert_name_ner = "bert-large-cased"
 bert_name_re = 'bert-base-cased'
@@ -106,7 +106,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
                   'id_label': id_label,
                   'label_id': label_id}
     ner_trainer = TrainerNer(bert_model, inputs_train_ner, outputs_train_ner,
-                             epochs, batch_size, rank, save_every, world_size)
+                             epochs, batch_size, rank, save_every, world_size, input_length)
     max_epoch = ner_trainer.kfold_cross_validation(k=5)
     # retrain on the whole development set
     ner_model = ner_trainer.re_train(max_epoch)
