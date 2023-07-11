@@ -158,11 +158,11 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
     ner_model, final_inputs, id_label = \
         train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
 
-    re_model, final_outputs = \
-        train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
-
-    final_model = FinalModel(ner_model, re_model, tokenizer, id_label, rank, re_input_length)
-    test_final(final_model, final_inputs, final_outputs, batch_size, world_size, rank)
+    # re_model, final_outputs = \
+    #     train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
+    #
+    # final_model = FinalModel(ner_model, re_model, tokenizer, id_label, rank, re_input_length)
+    # test_final(final_model, final_inputs, final_outputs, batch_size, world_size, rank)
 
     destroy_process_group()
 
