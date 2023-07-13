@@ -59,8 +59,11 @@ class TrainerRe:
         effective_batch_size = list(ids.size())[0]
         predicted_output = model_re(ids, masks, pos, self.embedding, effective_batch_size)
         predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
-        loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
-        loss = loss_fun(predicted_output, train_output)
+        loss_fun = torch.nn.CrossEntropyLoss(reduction='none').to(self.gpu_id)
+        loss_masked = loss_fun(predicted_output, train_output)
+        pad = -100
+        loss_mask = train_output != pad
+        loss = loss_masked.sum() / loss_mask.sum()
         loss.backward()
         optimizer.step()
 
@@ -152,8 +155,11 @@ class TrainerRe:
             effective_batch_size = list(ids.size())[0]
             predicted_output = model_re(ids, masks, pos, self.embedding, effective_batch_size)
             predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
-            loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
-            loss = loss_fun(predicted_output, out)
+            loss_fun = torch.nn.CrossEntropyLoss(reduction='none').to(self.gpu_id)
+            loss_masked = loss_fun(predicted_output, out)
+            pad = -100
+            loss_mask = out != pad
+            loss = loss_masked.sum() / loss_mask.sum()
             loss_sum += loss.item()
 
         return loss_sum / len(val_in)

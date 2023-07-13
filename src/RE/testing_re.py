@@ -37,8 +37,11 @@ def test(test_in, test_out, model, max_number_pos, gpu_id):
         effective_batch_size = list(ids.size())[0]
         predicted_output = model(ids, masks, pos, embedding, effective_batch_size)
         predicted_output = torch.transpose(predicted_output, dim0=1, dim1=2)
-        loss_fun = torch.nn.CrossEntropyLoss().to(gpu_id)
-        loss = loss_fun(predicted_output, out)
+        loss_fun = torch.nn.CrossEntropyLoss(reduction='none').to(gpu_id)
+        loss_masked = loss_fun(predicted_output, out)
+        pad = -100
+        loss_mask = out != pad
+        loss = loss_masked.sum() / loss_mask.sum()
         loss_sum += loss.item()
 
     return loss_sum / len(test_in)

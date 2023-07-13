@@ -226,8 +226,8 @@ def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
     for text, annotation in zip(tokenized_texts, tokenized_annotations):
         tokenized_text = ["[CLS]"] + text + ["[SEP]"]
         annotation = copy.copy(annotation)
-        annotation.insert(0, 0)
-        annotation.insert(len(tokenized_text) - 1, 0)
+        annotation.insert(0, -100)
+        annotation.insert(len(tokenized_text) - 1, -100)
 
         # truncation
         if len(tokenized_text) > max_len:
