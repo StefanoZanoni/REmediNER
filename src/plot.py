@@ -15,7 +15,7 @@ def plot_heat_map(test_cm, fold=None, train_cm=None):
         os.makedirs(f'./NER/plots', exist_ok=True)
     if not os.path.exists(f'./NER/plots/Heat maps'):
         os.makedirs(f'./NER/plots/Heat maps', exist_ok=True)
-    labels = ['O', 'B-Drug', 'B-Effect', 'I-Drug', 'I-Effect']
+    labels = ['O', 'B-Drug', 'I-Drug', 'B-Effect', 'I-Effect']
 
     if train_cm is not None:
         train_cm = pd.DataFrame(train_cm, index=labels, columns=labels)

@@ -62,15 +62,10 @@ def compute_iob(data):
 
 
 def get_labels_id(data):
-    labels = data['iob'].unique()
-    entities = set()
-    for l in labels:
-        for el in l.split():
-            entities.add(el)
-    id_label = {i: label for i, label in enumerate(entities)}
-    label_id = {label: i for i, label in enumerate(entities)}
+    label_id = {'O': 0, 'B-Drug': 1, 'I-Drug': 2, 'B-Effect': 3, 'I-Effect': 4}
+    id_label = {0: 'O', 1: 'B-Drug', 2: 'I-Drug', 3: 'B-Effect', 4: 'I-Effect'}
 
-    return id_label, label_id, len(entities)
+    return id_label, label_id, 5
 
 
 def split_train_test_ner(data):

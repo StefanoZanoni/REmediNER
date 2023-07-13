@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 import torch
+from sklearn.utils import class_weight
 
 from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -30,8 +31,8 @@ def clean_data(true_values, predicted_values):
     for i in range(true_values.shape[0]):
         true = true_values[i]
         predicted = predicted_values[i]
-        true = np.delete(true, np.where(true == -100))
         predicted = np.delete(predicted, np.where(true == -100))
+        true = np.delete(true, np.where(true == -100))
         new_true.append(true)
         new_predicted.append(predicted)
 
@@ -93,13 +94,12 @@ def scoring(true_values, predicted_values):
     for true, predicted in zip(true_values, predicted_values):
         true, predicted = convert_to_labels(true, predicted, id_label)
         metrics_dict = classification_report(true, predicted,
-                                             target_names=[id_label[0], id_label[1], id_label[2], id_label[3],
-                                                           id_label[4]],
-                                             labels=[id_label[0], id_label[1], id_label[2], id_label[3], id_label[4]],
+                                             target_names=['O', 'B-Drug', 'I-Drug', 'B-Effect', 'I-Effect'],
+                                             labels=['O', 'B-Drug', 'I-Drug', 'B-Effect', 'I-Effect'],
                                              output_dict=True)
         compute_metrics_mean(mean_dict, metrics_dict)
         cm = confusion_matrix(true, predicted,
-                              labels=['O', 'B-Drug', 'B-Effect', 'I-Drug', 'I-Effect'],
+                              labels=['O', 'B-Drug', 'I-Drug', 'B-Effect', 'I-Effect'],
                               normalize='all')
         mean_cm += cm
 
@@ -123,6 +123,40 @@ def reset_parameters(model):
             layer.reset_parameters()
 
 
+def get_missed_class(classes):
+    missed_class = []
+    total_classes = list(range(len(id_label)))
+
+    for el in total_classes:
+        if el not in classes:
+            missed_class.append(el)
+
+    return missed_class
+
+
+def compute_batch_weights(batch_labels):
+    class_weights = np.zeros(len(id_label))
+    for labels in batch_labels:
+        labels = labels.numpy(force=True)
+        labels = np.delete(labels, np.where(labels == -100))
+        classes = np.unique(labels)
+        missed_class = get_missed_class(classes)
+        weights = class_weight.compute_class_weight('balanced',
+                                                    classes=classes,
+                                                    y=labels)
+
+        if missed_class:
+            for missed in missed_class:
+                if missed < len(weights):
+                    weights = np.insert(weights, missed, np.max(weights) + np.mean(weights))
+                else:
+                    weights = np.append(weights, np.max(weights) + np.mean(weights))
+
+        class_weights += weights
+
+    return class_weights / len(labels)
+
+
 class TrainerNer:
     def __init__(self,
                  bert_model: dict,
@@ -141,7 +175,7 @@ class TrainerNer:
         self.train_out = train_out
         self.epochs = epochs
         self.batch_size = batch_size
-        self.save_evey = save_every
+        self.save_every = save_every
         self.world_size = world_size
         self.input_length = input_length
 
@@ -151,7 +185,9 @@ class TrainerNer:
         optimizer.zero_grad()
         effective_batch_size = list(ids.size())[0]
         logits, entities_vector = model(ids, masks, effective_batch_size)
-        loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
+        class_weights = compute_batch_weights(labels)
+        class_weights = torch.tensor(class_weights, dtype=torch.float)
+        loss_fun = torch.nn.CrossEntropyLoss(weight=class_weights).to(self.gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss = loss_fun(logits, labels)
         loss.backward()
@@ -237,7 +273,7 @@ class TrainerNer:
                 train_metrics_mean.append(train_metrics_dict)
                 train_cm_mean += train_cm
 
-            if self.gpu_id == 0 and epoch % self.save_evey == 0:
+            if self.gpu_id == 0 and epoch % self.save_every == 0:
                 save_checkpoint(epoch, model)
 
         print(f'---[GPU{self.gpu_id}] TRAINING TIME IN SECONDS: %s ---\n\n' % (time.time() - start_time))
@@ -265,7 +301,9 @@ class TrainerNer:
             labels = labels.to(self.gpu_id)
             effective_batch_size = list(ids.size())[0]
             logits, entities_vector = model(ids, masks, effective_batch_size)
-            loss_fun = torch.nn.CrossEntropyLoss().to(self.gpu_id)
+            class_weights = compute_batch_weights(labels)
+            class_weights = torch.tensor(class_weights, dtype=torch.float)
+            loss_fun = torch.nn.CrossEntropyLoss(weight=class_weights).to(self.gpu_id)
             logits = torch.transpose(logits, dim0=1, dim1=2)
             loss = loss_fun(logits, labels)
             loss_sum += loss.item()
@@ -327,7 +365,7 @@ class TrainerNer:
             id_label = self.bert_model['id_label']
             label_id = self.bert_model['label_id']
 
-            model = NerModel(bert_model, self.input_length)
+            model = NerModel(bert_model, self.input_length, id_label, label_id)
             model.apply(reset_parameters)
             optimizer = model.get_optimizer()
             scheduler = model.get_scheduler(self.epochs * len(train_subsampler) / self.batch_size)
@@ -380,7 +418,7 @@ class TrainerNer:
         global id_label
         id_label = self.bert_model['id_label']
 
-        model = NerModel(bert_model, self.input_length)
+        model = NerModel(bert_model, self.input_length, id_label, label_id)
         model.apply(reset_parameters)
         optimizer = model.get_optimizer()
         scheduler = model.get_scheduler(self.epochs * len(self.train_in) / self.batch_size)

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, DistributedSampler
 
-from src.NER.training_ner import create_mean_dict, scoring, compute_metrics_mean
+from src.NER.training_ner import create_mean_dict, scoring, compute_metrics_mean, compute_batch_weights
 from src.plot import plot_heat_map
 
 
@@ -29,7 +29,6 @@ def test_ner(test_input, test_output, model, batch_size, world_size, rank, id_la
 
 
 def test(test_in, test_out, model, id_label, gpu_id):
-    b_sz = len(next(iter(test_in))[0])
     model.eval()
     loss_sum = 0
     mean_dict = create_mean_dict()
@@ -41,8 +40,11 @@ def test(test_in, test_out, model, id_label, gpu_id):
         ids = ids.to(gpu_id)
         masks = masks.to(gpu_id)
         labels = labels.to(gpu_id)
-        logits, entities_vector = model(ids, masks, b_sz)
-        loss_fun = torch.nn.CrossEntropyLoss().to(gpu_id)
+        effective_batch_size = list(ids.size())[0]
+        logits, entities_vector = model(ids, masks, effective_batch_size)
+        class_weights = compute_batch_weights(labels)
+        class_weights = torch.tensor(class_weights, dtype=torch.float)
+        loss_fun = torch.nn.CrossEntropyLoss(weight=class_weights).to(gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss = loss_fun(logits, labels)
         loss_sum += loss.item()
