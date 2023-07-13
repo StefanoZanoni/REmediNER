@@ -131,8 +131,8 @@ def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_l
     for text, labels in zip(tokenized_texts, tokenized_labels):
         tokenized_text = ["[CLS]"] + text + ["[SEP]"]
         labels = copy.copy(labels)
-        labels.insert(0, "O")
-        labels.insert(len(tokenized_text) - 1, "O")
+        labels.insert(0, 'PAD')
+        labels.insert(len(tokenized_text) - 1, 'PAD')
 
         # truncation
         if len(tokenized_text) > max_len:

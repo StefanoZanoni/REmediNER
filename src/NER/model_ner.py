@@ -81,8 +81,9 @@ class NerModel(torch.nn.Module):
 
     def get_optimizer(self):
         optimizer = torch.optim.AdamW(NerModel.parameters(self),
-                                      lr=5e-5,  # args.learning_rate - default is 5e-5
-                                      eps=1e-7  # args.adam_epsilon  - default is 1e-8.
+                                      lr=1e-5,  # args.learning_rate - default is 5e-5
+                                      eps=1e-7,  # args.adam_epsilon  - default is 1e-8.
+                                      betas=(0.8, 0.8)
                                       )
         return optimizer
 
@@ -128,6 +129,7 @@ class NerModel(torch.nn.Module):
         # bert_output = torch.concat(bert_output, dim=-1)
         #
         # logits, entities_vector = self.__bert_head(bert_output, effective_batch_size)
-        entities_vector = self.softmax(logits)
+        entities_distribution = self.softmax(logits)
+        entities_vector = torch.argmax(entities_distribution, dim=-1)
 
         return logits, entities_vector
