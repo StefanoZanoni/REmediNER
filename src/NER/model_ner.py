@@ -76,8 +76,6 @@ class NerModel(torch.nn.Module):
         # linear_in_size = h_out * w_out
         # self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
         # self.conv_linear_gelu = torch.nn.GELU()
-        #
-        self.softmax = torch.nn.Softmax(dim=-1)
 
     def get_optimizer(self):
         optimizer = torch.optim.AdamW(NerModel.parameters(self),
@@ -121,7 +119,7 @@ class NerModel(torch.nn.Module):
     def forward(self, ids, mask, effective_batch_size):
         bert_output = self.bert(ids, attention_mask=mask, return_dict=False)
 
-        # # concatenate the last four hidden states
+        # concatenate the last four hidden states
         logits = bert_output[0]
         # num_hidden_states = len(bert_output)
         # bert_output = [bert_output[num_hidden_states - 1 - 1], bert_output[num_hidden_states - 1 - 2],
@@ -129,7 +127,6 @@ class NerModel(torch.nn.Module):
         # bert_output = torch.concat(bert_output, dim=-1)
         #
         # logits, entities_vector = self.__bert_head(bert_output, effective_batch_size)
-        entities_distribution = self.softmax(logits)
-        entities_vector = torch.argmax(entities_distribution, dim=-1)
+        entities_vector = torch.argmax(logits, dim=-1)
 
         return logits, entities_vector

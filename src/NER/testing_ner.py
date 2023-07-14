@@ -42,8 +42,10 @@ def test(test_in, test_out, model, id_label, gpu_id):
         labels = labels.to(gpu_id)
         effective_batch_size = list(ids.size())[0]
         logits, entities_vector = model(ids, masks, effective_batch_size)
+
         class_weights = compute_batch_weights(labels)
         class_weights = torch.tensor(class_weights, dtype=torch.float)
+
         loss_fun = torch.nn.CrossEntropyLoss(weight=class_weights, reduction='none').to(gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss_masked = loss_fun(logits, labels)
@@ -51,9 +53,8 @@ def test(test_in, test_out, model, id_label, gpu_id):
         loss_mask = labels != pad
         loss = loss_masked.sum() / loss_mask.sum()
         loss_sum += loss.item()
-        logits = torch.transpose(logits, dim0=1, dim1=2)
-        predicted_output = torch.argmax(logits, dim=-1)
-        predicted_labels = predicted_output.numpy(force=True)
+
+        predicted_labels = entities_vector.numpy(force=True)
         true_labels = labels.numpy(force=True)
         metrics_dict, cm = scoring(true_labels, predicted_labels)
         compute_metrics_mean(mean_dict, metrics_dict)
