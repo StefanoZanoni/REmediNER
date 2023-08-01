@@ -8,39 +8,52 @@ from sklearn.model_selection import train_test_split
 
 
 def iob_tagging(text, drugs, effects, twt):
+
+    # lists of all drugs and effects starting and ending indexes
     ds = []
     es = []
+
+    # Find all starting and ending indexes of drugs and effects
+    # if the same drug of effect occurs two or more times in the text,
+    # start and end indexes refer to the first occurrence.
+    # In this way we can associate one drug with multiple effects and vice versa
     for drug in drugs:
         start, end = re.search(re.escape(drug), text).span()
         ds.append((start, end))
     for effect in effects:
         start, end = re.search(re.escape(effect), text).span()
         es.append((start, end))
+
+    # find all starting and ending indexes of all words in text
     span_list = twt.span_tokenize(text)
 
     entities = ['Drug', 'Effect']
-
     iob_list = []
-
     i = 0
+
     for start, end in span_list:
         temp_iob_list = []
         for (start_d, end_d), (start_e, end_e) in zip(ds, es):
             iob_tag = 'O'
+            # if the beginning of a drug or an effect is found, set iob_tag to B
             if start == start_d or start == start_e:
                 iob_tag = 'B'
+                # check if it is the beginning of a drug or of an effect
                 if start == start_d:
                     i = 0
                 else:
                     i = 1
+            # if the drug or the effect is split into multiple tokens, set iob_tag to I
             elif (start_d < start and end <= end_d) or (start_e < start and end <= end_e):
                 iob_tag = 'I'
 
+            # add '-Drug' or '-Effect' to iob_tag found so far
             if iob_tag != 'O':
                 iob_tag += '-{}'.format(entities[i])
 
             temp_iob_list.append(iob_tag)
 
+        # find multiple drugs or effects in the text prioritizing 'B' and 'I' over the 'O'
         for j in range(len(temp_iob_list)):
             if 'B' in temp_iob_list[j]:
                 iob_tag = temp_iob_list[j]
@@ -52,10 +65,12 @@ def iob_tagging(text, drugs, effects, twt):
     return ' '.join(iob_list)
 
 
+# compute iob tagging for a single text
 def get_row_iob(row, twt):
     return iob_tagging(row.text, row.drug, row.effect, twt)
 
 
+# compute iob tagging on the whole dataset
 def compute_iob(data):
     twt = TreebankWordTokenizer()
     data['iob'] = data.apply(lambda row: get_row_iob(row, twt), axis=1)
@@ -77,6 +92,8 @@ def split_train_test_ner(data):
     return train_in, test_in, train_out, test_out
 
 
+# this function is used to split the test data into test data for NER model testing
+# and test data for FINAL model testing
 def split_test_ner(input, output):
     test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final = \
         train_test_split(input, output, test_size=0.5, shuffle=True, random_state=0)
@@ -84,6 +101,8 @@ def split_test_ner(input, output):
     return test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final
 
 
+# this function is used to tokenize the text according to the bert tokenizer
+# and duplicate the iob tagging for the sub-tokens
 def tokenize_text_ner(texts, labels, tokenizer):
     texts = texts['text'].to_list()
     labels = labels['iob'].to_list()
@@ -91,6 +110,7 @@ def tokenize_text_ner(texts, labels, tokenizer):
     temp_tokenized_texts = []
     temp_tokenized_labels = []
 
+    # tokenize text and labels
     for text, text_labels in zip(texts, labels):
         tokenized_text = []
         tokenized_label = []
@@ -106,6 +126,7 @@ def tokenize_text_ner(texts, labels, tokenizer):
     tokenized_texts = []
     tokenized_labels = []
 
+    # transform the list of lists of tokens into a list of tokens
     for text in temp_tokenized_texts:
         tokenized_text = []
         for word in text:
@@ -113,6 +134,7 @@ def tokenize_text_ner(texts, labels, tokenizer):
                 tokenized_text.append(token)
         tokenized_texts.append(tokenized_text)
 
+    # transform the list of lists of tokens into a list of tokens
     for text_labels in temp_tokenized_labels:
         tokenized_text_labels = []
         for labels in text_labels:
@@ -123,6 +145,7 @@ def tokenize_text_ner(texts, labels, tokenizer):
     return tokenized_texts, tokenized_labels
 
 
+# this function is used to prepare input in BERT format
 def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_len):
     bert_ids = []
     bert_masks = []
@@ -181,6 +204,8 @@ def convert_to_list(column, name):
         column.at[i, name] = [row[name]]
 
 
+# This function is used to compute data augmentation for NER task.
+# Multiple texts will be concatenated to obtain texts with multiple drugs and effects.
 def prepare_data_for_ner(data):
     new_data = copy.copy(data)
     convert_to_list(new_data['drug'].to_frame(), 'drug')

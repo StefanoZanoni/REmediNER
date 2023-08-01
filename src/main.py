@@ -144,32 +144,40 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
     global bert_name_ner
     ddp_setup(rank, world_size)
 
+    # create the folder to store pre-processed data
     if not os.path.exists('../data'):
         os.makedirs('../data', exist_ok=True)
 
+    # pre-process data for NER task
     if not os.path.exists("../data/ner.csv"):
         data_ner = load_data()
         pre_process_texts(data_ner)
         data_ner = prepare_data_for_ner(data_ner)
         compute_iob(data_ner)
         data_ner.to_csv("../data/ner.csv", index=False)
+    # read already pre-processed data for NER task
     else:
         data_ner = pd.read_csv("../data/ner.csv", dtype={'drug': object, 'effect': object})
+    # pre-process data for RE task
     if not os.path.exists("../data/re.csv"):
         data_re = load_data()
         pre_process_texts(data_re)
         data_re = prepare_data_for_re(data_re)
         compute_pos(data_re)
         data_re.to_csv("../data/re.csv", index=False)
+    # read already pre-processed data for RE task
     else:
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
+    # train the model for NER task
     ner_model, final_inputs, id_label = \
         train_ner(data_ner, epochs, batch_size, rank, save_every, world_size, ner_input_length)
 
+    # train the model for RE task
     # re_model, final_outputs = \
     #     train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
 
+    # build the final model from the union of the NER model and RE model
     # final_model = FinalModel(ner_model, re_model, tokenizer_ner, id_label, rank, re_input_length)
     # test_final(final_model, final_inputs, final_outputs, batch_size, world_size, rank)
 
@@ -179,12 +187,17 @@ def main(rank, world_size, save_every=10, epochs=10, batch_size=32, ner_input_le
 if __name__ == '__main__':
     import sys
 
+    # read parameters from command line
     epochs = int(sys.argv[1])
     batch_size = int(sys.argv[2])
     save_every = int(sys.argv[3])
     ner_input_length = int(sys.argv[4])
     re_input_length = int(sys.argv[5])
+
+    # retrieve the number of gpus available
     world_size = torch.cuda.device_count()
+
+    # create the main process for each gpu
     mp.spawn(main,
              args=(world_size, save_every, epochs, batch_size, ner_input_length, re_input_length,),
              nprocs=world_size)
