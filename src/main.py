@@ -16,7 +16,7 @@ from src.NER.testing_ner import test_ner
 from src.RE.testing_re import test_re
 from src.data_utilities import load_data, pre_process_texts
 from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
-    tokenize_text_ner, get_ner_inputs, prepare_data_for_ner, split_test_ner
+    tokenize_text_ner, get_ner_inputs, prepare_data_for_ner, split_test_ner, compute_weights
 from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_context_mean_length, tokenize_text_re, \
     split_train_test_re, get_re_inputs, compute_pos_indexes, split_test_re
 from src.NER.training_ner import TrainerNer
@@ -83,7 +83,7 @@ def train_re(data_re, epochs, batch_size, rank, save_every, world_size, input_le
 
 def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_length):
     # NER data
-    id_label, label_id, len_labels = get_labels_id(data)
+    id_label, label_id, len_labels = get_labels_id()
     train_in_ner, test_in_ner, train_out_ner, test_out_ner = split_train_test_ner(data)
     test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final = split_test_ner(test_in_ner, test_out_ner)
 
@@ -92,6 +92,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
                                                                               tokenizer_ner)
     ner_ids, ner_masks, ner_labels = \
         get_ner_inputs(tokenized_texts_train_ner, tokenized_labels_train_ner, tokenizer_ner, label_id, input_length)
+    ner_weights = compute_weights(ner_labels.numpy())
     inputs_train_ner = TensorDataset(ner_ids, ner_masks)
     outputs_train_ner = TensorDataset(ner_labels)
 
@@ -108,14 +109,14 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
                   'id_label': id_label,
                   'label_id': label_id}
     ner_trainer = TrainerNer(bert_model, inputs_train_ner, outputs_train_ner,
-                             epochs, batch_size, rank, save_every, world_size, input_length)
+                             epochs, batch_size, rank, save_every, world_size, input_length, ner_weights)
     max_epoch = ner_trainer.kfold_cross_validation(k=5)
     # retrain on the whole development set
     ner_model = ner_trainer.re_train(max_epoch)
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
-    test_ner(inputs_test_ner, outputs_test_ner, ner_model, batch_size, world_size, rank, id_label)
+    test_ner(inputs_test_ner, outputs_test_ner, ner_model, batch_size, world_size, rank, id_label, ner_weights)
 
     # final test data
     tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,

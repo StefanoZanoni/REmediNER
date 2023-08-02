@@ -123,40 +123,6 @@ def reset_parameters(model):
             layer.reset_parameters()
 
 
-def get_missed_class(classes):
-    missed_class = []
-    total_classes = list(range(len(id_label)))
-
-    for el in total_classes:
-        if el not in classes:
-            missed_class.append(el)
-
-    return missed_class
-
-
-def compute_batch_weights(batch_labels):
-    class_weights = np.zeros(len(id_label))
-    for labels in batch_labels:
-        labels = labels.numpy(force=True)
-        labels = np.delete(labels, np.where(labels == -100))
-        classes = np.unique(labels)
-        missed_class = get_missed_class(classes)
-        weights = class_weight.compute_class_weight('balanced',
-                                                    classes=classes,
-                                                    y=labels)
-
-        if missed_class:
-            for missed in missed_class:
-                if missed < len(weights):
-                    weights = np.insert(weights, missed, np.max(weights) + np.mean(weights))
-                else:
-                    weights = np.append(weights, np.max(weights) + np.mean(weights))
-
-        class_weights += weights
-
-    return class_weights / len(labels)
-
-
 class TrainerNer:
     def __init__(self,
                  bert_model: dict,
@@ -168,6 +134,7 @@ class TrainerNer:
                  save_every: int,
                  world_size: int,
                  input_length: int,
+                 weights: int,
                  ) -> None:
         self.gpu_id = gpu_id
         self.bert_model = bert_model
@@ -178,6 +145,7 @@ class TrainerNer:
         self.save_every = save_every
         self.world_size = world_size
         self.input_length = input_length
+        self.loss_weights = torch.tensor(weights, dtype=torch.float)
 
     def __run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
 
@@ -188,9 +156,7 @@ class TrainerNer:
         logits = model(ids, masks, effective_batch_size)
         predicted_output = torch.argmax(logits, dim=-1)
 
-        class_weights = compute_batch_weights(labels)
-        class_weights = torch.tensor(class_weights, dtype=torch.float)
-        loss_fun = torch.nn.CrossEntropyLoss(weight=class_weights, reduction='none').to(self.gpu_id)
+        loss_fun = torch.nn.CrossEntropyLoss(weight=self.loss_weights, reduction='none').to(self.gpu_id)
 
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss_masked = loss_fun(logits, labels)
@@ -312,10 +278,7 @@ class TrainerNer:
             logits = model(ids, masks, effective_batch_size)
             predicted_output = torch.argmax(logits, dim=-1)
 
-            class_weights = compute_batch_weights(labels)
-            class_weights = torch.tensor(class_weights, dtype=torch.float)
-
-            loss_fun = torch.nn.CrossEntropyLoss(weight=class_weights, reduction='none').to(self.gpu_id)
+            loss_fun = torch.nn.CrossEntropyLoss(weight=self.loss_weights, reduction='none').to(self.gpu_id)
             logits = torch.transpose(logits, dim0=1, dim1=2)
             loss_masked = loss_fun(logits, labels)
             pad = -100

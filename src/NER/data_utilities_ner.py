@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from nltk import TreebankWordTokenizer
 from sklearn.model_selection import train_test_split
+from sklearn.utils import class_weight
 
 
 def iob_tagging(text, drugs, effects, twt):
@@ -76,7 +77,7 @@ def compute_iob(data):
     data['iob'] = data.apply(lambda row: get_row_iob(row, twt), axis=1)
 
 
-def get_labels_id(data):
+def get_labels_id():
     label_id = {'O': 0, 'B-Drug': 1, 'I-Drug': 2, 'B-Effect': 3, 'I-Effect': 4}
     id_label = {0: 'O', 1: 'B-Drug', 2: 'I-Drug', 3: 'B-Effect', 4: 'I-Effect'}
 
@@ -223,3 +224,36 @@ def prepare_data_for_ner(data):
             new_data.loc[len(new_data)] = [concatenated_text, concatenated_drugs, concatenated_effects]
 
     return new_data
+
+
+def get_missed_class(classes):
+    missed_class = []
+    total_classes = list(range(5))
+
+    for el in total_classes:
+        if el not in classes:
+            missed_class.append(el)
+
+    return missed_class
+
+
+def compute_weights(data):
+    class_weights = np.zeros(5)
+    for labels in data:
+        labels = np.delete(labels, np.where(labels == -100))
+        classes = np.unique(labels)
+        missed_class = get_missed_class(classes)
+        weights = class_weight.compute_class_weight('balanced',
+                                                    classes=classes,
+                                                    y=labels)
+
+        if missed_class:
+            for missed in missed_class:
+                if missed < len(weights):
+                    weights = np.insert(weights, missed, np.max(weights) + np.mean(weights))
+                else:
+                    weights = np.append(weights, np.max(weights) + np.mean(weights))
+
+        class_weights += weights
+
+    return class_weights / len(data)

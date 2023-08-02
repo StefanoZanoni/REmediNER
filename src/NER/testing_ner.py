@@ -2,11 +2,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, DistributedSampler
 
-from src.NER.training_ner import create_mean_dict, scoring, compute_metrics_mean, compute_batch_weights
+from src.NER.training_ner import create_mean_dict, scoring, compute_metrics_mean
 from src.plot import plot_heat_map
 
 
-def test_ner(test_input, test_output, model, batch_size, world_size, rank, id_label):
+def test_ner(test_input, test_output, model, batch_size, world_size, rank, id_label, loss_weights):
     test_in_loader = DataLoader(test_input,
                                 batch_size=batch_size,
                                 pin_memory=True,
@@ -22,13 +22,14 @@ def test_ner(test_input, test_output, model, batch_size, world_size, rank, id_la
                                                             num_replicas=world_size,
                                                             rank=rank))
 
-    test_loss, test_metrics, test_cm = test(test_in_loader, test_out_loader, model, id_label, rank)
+    loss_weights = torch.tensor(loss_weights, dtype=torch.float)
+    test_loss, test_metrics, test_cm = test(test_in_loader, test_out_loader, model, id_label, rank, loss_weights)
     print(f'------------------Test NER loss: {test_loss}------------------\n\n')
     print(f'------------------Test NER metrics: {test_metrics}------------------\n\n')
     plot_heat_map(test_cm)
 
 
-def test(test_in, test_out, model, id_label, gpu_id):
+def test(test_in, test_out, model, id_label, gpu_id, loss_weights):
     model.eval()
     loss_sum = 0
     mean_dict = create_mean_dict()
@@ -45,10 +46,7 @@ def test(test_in, test_out, model, id_label, gpu_id):
         logits = model(ids, masks, effective_batch_size)
         predicted_output = torch.argmax(logits, dim=-1)
 
-        class_weights = compute_batch_weights(labels)
-        class_weights = torch.tensor(class_weights, dtype=torch.float)
-
-        loss_fun = torch.nn.CrossEntropyLoss(weight=class_weights, reduction='none').to(gpu_id)
+        loss_fun = torch.nn.CrossEntropyLoss(weight=loss_weights, reduction='none').to(gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss_masked = loss_fun(logits, labels)
         pad = -100
