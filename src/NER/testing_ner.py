@@ -6,7 +6,7 @@ from src.NER.training_ner import create_mean_dict, scoring, compute_metrics_mean
 from src.plot import plot_heat_map
 
 
-def test_ner(test_input, test_output, model, batch_size, world_size, rank, id_label, loss_weights):
+def test_ner(test_input, test_output, model, batch_size, world_size, rank, id_label, loss_weights, input_length):
     test_in_loader = DataLoader(test_input,
                                 batch_size=batch_size,
                                 pin_memory=True,
@@ -23,17 +23,20 @@ def test_ner(test_input, test_output, model, batch_size, world_size, rank, id_la
                                                             rank=rank))
 
     loss_weights = torch.tensor(loss_weights, dtype=torch.float)
-    test_loss, test_metrics, test_cm = test(test_in_loader, test_out_loader, model, id_label, rank, loss_weights)
+    test_loss, test_metrics, test_cm = test(test_in_loader, test_out_loader, model, id_label, rank, loss_weights, input_length)
     print(f'------------------Test NER loss: {test_loss}------------------\n\n')
     print(f'------------------Test NER metrics: {test_metrics}------------------\n\n')
     plot_heat_map(test_cm)
 
 
-def test(test_in, test_out, model, id_label, gpu_id, loss_weights):
+def test(test_in, test_out, model, id_label, gpu_id, loss_weights, input_length):
+
+    b_sz = len(next(iter(test_in))[0])
+
     model.eval()
     loss_sum = 0
-    mean_dict = create_mean_dict()
-    mean_cm = np.zeros((len(id_label), len(id_label)))
+    predicted = np.zeros((b_sz, input_length), dtype=int)
+    true = np.zeros((b_sz, input_length), dtype=int)
     test_dim = len(test_in)
 
     for (ids, masks), labels in zip(test_in, test_out):
@@ -56,10 +59,12 @@ def test(test_in, test_out, model, id_label, gpu_id, loss_weights):
 
         predicted_labels = predicted_output.numpy(force=True)
         true_labels = labels.numpy(force=True)
-        metrics_dict, cm = scoring(true_labels, predicted_labels)
-        compute_metrics_mean(mean_dict, metrics_dict)
-        mean_cm += cm
+        predicted = np.concatenate([list(predicted), list(predicted_labels)])
+        true = np.concatenate([list(true), list(true_labels)])
 
-    compute_metrics_mean(mean_dict, metrics_dict, dim=test_dim)
+    dropping_rows = list(range(b_sz))
+    predicted = np.delete(predicted, dropping_rows, 0)
+    true = np.delete(true, dropping_rows, 0)
+    metrics, cm = scoring(true, predicted)
 
-    return loss_sum / test_dim, mean_dict, mean_cm / test_dim
+    return loss_sum / test_dim, metrics, cm

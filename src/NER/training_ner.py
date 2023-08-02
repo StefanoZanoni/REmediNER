@@ -145,7 +145,7 @@ class TrainerNer:
         self.save_every = save_every
         self.world_size = world_size
         self.input_length = input_length
-        self.loss_weights = torch.tensor(weights, dtype=torch.float)
+        self.loss_weights = torch.tensor(weights, dtype=torch.float32)
 
     def __run_batch_ner(self, ids, masks, labels, model, optimizer, scheduler):
 
@@ -156,6 +156,7 @@ class TrainerNer:
         logits = model(ids, masks, effective_batch_size)
         predicted_output = torch.argmax(logits, dim=-1)
 
+        self.loss_weights.to(self.gpu_id)
         loss_fun = torch.nn.CrossEntropyLoss(weight=self.loss_weights, reduction='none').to(self.gpu_id)
 
         logits = torch.transpose(logits, dim0=1, dim1=2)
@@ -169,9 +170,8 @@ class TrainerNer:
 
         predicted_labels = predicted_output.numpy(force=True)
         true_labels = labels.numpy(force=True)
-        metrics_dict, cm = scoring(true_labels, predicted_labels)
 
-        return loss.item(), metrics_dict, cm
+        return loss.item(), predicted_labels, true_labels
 
     def __run_epoch_ner(self, train_in, train_out, epoch, model, optimizer, scheduler):
 
@@ -181,8 +181,9 @@ class TrainerNer:
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batch-size: {b_sz} | Steps {len(train_in)}")
 
         epoch_loss = 0
-        mean_dict = create_mean_dict()
-        mean_cm = np.zeros((len(id_label), len(id_label)))
+        predicted = np.zeros((b_sz, self.input_length), dtype=int)
+        true = np.zeros((b_sz, self.input_length), dtype=int)
+
         train_dim = len(train_in)
 
         for (ids, masks), labels in zip(train_in, train_out):
@@ -190,14 +191,17 @@ class TrainerNer:
             ids = ids.to(self.gpu_id)
             masks = masks.to(self.gpu_id)
             labels = labels.to(self.gpu_id)
-            batch_loss, metrics_dict, cm = self.__run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
+            batch_loss, predicted_labels, true_labels = self.__run_batch_ner(ids, masks, labels, model, optimizer, scheduler)
             epoch_loss += batch_loss
-            compute_metrics_mean(mean_dict, metrics_dict)
-            mean_cm += cm
+            predicted = np.concatenate([list(predicted), list(predicted_labels)])
+            true = np.concatenate([list(true), list(true_labels)])
 
-        compute_metrics_mean(mean_dict, metrics_dict, dim=train_dim)
+        dropping_rows = list(range(b_sz))
+        predicted = np.delete(predicted, dropping_rows, 0)
+        true = np.delete(true, dropping_rows, 0)
+        metrics, cm = scoring(true, predicted)
 
-        return epoch_loss / train_dim, mean_dict, cm / train_dim
+        return epoch_loss / train_dim, metrics, cm
 
     def __train_ner(self, train_in, train_out, model, optimizer, scheduler, val_in=None, val_out=None, ):
 
@@ -258,14 +262,16 @@ class TrainerNer:
 
     def __validation_ner(self, val_in, val_out, model, epoch):
 
+        b_sz = len(next(iter(val_in))[0])
+
         # use to change the seed to shuffle the data
         val_in.sampler.set_epoch(epoch)
         val_out.sampler.set_epoch(epoch)
 
         model.eval()
         loss_sum = 0
-        mean_dict = create_mean_dict()
-        mean_cm = np.zeros((len(id_label), len(id_label)))
+        predicted = np.zeros((b_sz, self.input_length), dtype=int)
+        true = np.zeros((b_sz, self.input_length), dtype=int)
         val_dim = len(val_in)
 
         for (ids, masks), labels in zip(val_in, val_out):
@@ -288,13 +294,15 @@ class TrainerNer:
 
             predicted_labels = predicted_output.numpy(force=True)
             true_labels = labels.numpy(force=True)
-            metrics_dict, cm = scoring(true_labels, predicted_labels)
-            compute_metrics_mean(mean_dict, metrics_dict)
-            mean_cm += cm
+            predicted = np.concatenate([list(predicted), list(predicted_labels)])
+            true = np.concatenate([list(true), list(true_labels)])
 
-        compute_metrics_mean(mean_dict, metrics_dict, dim=val_dim)
+        dropping_rows = list(range(b_sz))
+        predicted = np.delete(predicted, dropping_rows, 0)
+        true = np.delete(true, dropping_rows, 0)
+        metrics, cm = scoring(true, predicted)
 
-        return loss_sum / val_dim, mean_dict, mean_cm / val_dim
+        return loss_sum / val_dim, metrics, cm
 
     def kfold_cross_validation(self, k):
 

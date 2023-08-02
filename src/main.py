@@ -116,7 +116,7 @@ def train_ner(data, epochs, batch_size, rank, save_every, world_size, input_leng
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
-    test_ner(inputs_test_ner, outputs_test_ner, ner_model, batch_size, world_size, rank, id_label, ner_weights)
+    test_ner(inputs_test_ner, outputs_test_ner, ner_model, batch_size, world_size, rank, id_label, ner_weights, input_length)
 
     # final test data
     tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
