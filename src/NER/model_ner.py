@@ -8,8 +8,8 @@ def model_bert(model_name, id_label, label_id):
     model = AutoModelForTokenClassification.from_pretrained(model_name, id2label=id_label, label2id=label_id)
 
     # freeze the bert parameters, train just the classifier
-    for param in model.bert.parameters():
-        param.requires_grad = False
+    # for param in model.bert.parameters():
+    #     param.requires_grad = False
 
     return model
 

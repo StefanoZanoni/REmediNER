@@ -49,7 +49,7 @@ def test(test_in, test_out, model, id_label, gpu_id, loss_weights, input_length)
         logits = model(ids, masks, effective_batch_size)
         predicted_output = torch.argmax(logits, dim=-1)
 
-        loss_fun = torch.nn.CrossEntropyLoss(weight=loss_weights, reduction='none').to(gpu_id)
+        loss_fun = torch.nn.CrossEntropyLoss(reduction='none').to(gpu_id)
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss_masked = loss_fun(logits, labels)
         pad = -100
