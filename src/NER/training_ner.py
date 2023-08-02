@@ -148,9 +148,9 @@ def compute_batch_weights(batch_labels):
         if missed_class:
             for missed in missed_class:
                 if missed < len(weights):
-                    weights = np.insert(weights, missed, np.max(weights) + np.mean(weights))
+                    weights = np.insert(weights, missed, np.max(weights) * len(id_label))
                 else:
-                    weights = np.append(weights, np.max(weights) + np.mean(weights))
+                    weights = np.append(weights, np.max(weights) * len(id_label))
 
         class_weights += weights
 
@@ -185,7 +185,8 @@ class TrainerNer:
         optimizer.zero_grad()
         effective_batch_size = list(ids.size())[0]
 
-        logits, entities_vector = model(ids, masks, effective_batch_size)
+        logits = model(ids, masks, effective_batch_size)
+        predicted_output = torch.argmax(logits, dim=-1)
 
         class_weights = compute_batch_weights(labels)
         class_weights = torch.tensor(class_weights, dtype=torch.float)
@@ -200,8 +201,6 @@ class TrainerNer:
         optimizer.step()
         scheduler.step()
 
-        logits = torch.transpose(logits, dim0=1, dim1=2)
-        predicted_output = torch.argmax(logits, dim=-1)
         predicted_labels = predicted_output.numpy(force=True)
         true_labels = labels.numpy(force=True)
         metrics_dict, cm = scoring(true_labels, predicted_labels)
@@ -293,8 +292,10 @@ class TrainerNer:
 
     def __validation_ner(self, val_in, val_out, model, epoch):
 
+        # use to change the seed to shuffle the data
         val_in.sampler.set_epoch(epoch)
         val_out.sampler.set_epoch(epoch)
+
         model.eval()
         loss_sum = 0
         mean_dict = create_mean_dict()
@@ -308,7 +309,8 @@ class TrainerNer:
             labels = labels.to(self.gpu_id)
             effective_batch_size = list(ids.size())[0]
 
-            logits, entities_vector = model(ids, masks, effective_batch_size)
+            logits = model(ids, masks, effective_batch_size)
+            predicted_output = torch.argmax(logits, dim=-1)
 
             class_weights = compute_batch_weights(labels)
             class_weights = torch.tensor(class_weights, dtype=torch.float)
@@ -321,8 +323,6 @@ class TrainerNer:
             loss = loss_masked.sum() / loss_mask.sum()
             loss_sum += loss.item()
 
-            logits = torch.transpose(logits, dim0=1, dim1=2)
-            predicted_output = torch.argmax(logits, dim=-1)
             predicted_labels = predicted_output.numpy(force=True)
             true_labels = labels.numpy(force=True)
             metrics_dict, cm = scoring(true_labels, predicted_labels)

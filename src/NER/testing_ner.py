@@ -41,7 +41,9 @@ def test(test_in, test_out, model, id_label, gpu_id):
         masks = masks.to(gpu_id)
         labels = labels.to(gpu_id)
         effective_batch_size = list(ids.size())[0]
-        logits, entities_vector = model(ids, masks, effective_batch_size)
+
+        logits = model(ids, masks, effective_batch_size)
+        predicted_output = torch.argmax(logits, dim=-1)
 
         class_weights = compute_batch_weights(labels)
         class_weights = torch.tensor(class_weights, dtype=torch.float)
@@ -54,7 +56,7 @@ def test(test_in, test_out, model, id_label, gpu_id):
         loss = loss_masked.sum() / loss_mask.sum()
         loss_sum += loss.item()
 
-        predicted_labels = entities_vector.numpy(force=True)
+        predicted_labels = predicted_output.numpy(force=True)
         true_labels = labels.numpy(force=True)
         metrics_dict, cm = scoring(true_labels, predicted_labels)
         compute_metrics_mean(mean_dict, metrics_dict)

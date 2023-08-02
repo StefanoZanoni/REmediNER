@@ -111,10 +111,8 @@ class NerModel(torch.nn.Module):
     #     logits = self.conv_linear_gelu(linear_out)
     #
     #     logits = torch.reshape(logits, shape=(effective_batch_size, self.input_size, 5))
-    #     entities_distribution = self.softmax(logits)
-    #     entities_vector = torch.argmax(entities_distribution, dim=-1)
     #
-    #     return logits, entities_vector
+    #     return logits
 
     def forward(self, ids, mask, effective_batch_size):
         bert_output = self.bert(ids, attention_mask=mask, return_dict=False)
@@ -126,7 +124,6 @@ class NerModel(torch.nn.Module):
         #                bert_output[num_hidden_states - 1 - 3], bert_output[num_hidden_states - 1 - 4]]
         # bert_output = torch.concat(bert_output, dim=-1)
         #
-        # logits, entities_vector = self.__bert_head(bert_output, effective_batch_size)
-        entities_vector = torch.argmax(logits, dim=-1)
+        # logits = self.__bert_head(bert_output, effective_batch_size)
 
-        return logits, entities_vector
+        return logits
