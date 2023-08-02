@@ -15,6 +15,7 @@ def load_data():
     return dataframe
 
 
+# dropping sentences with overlapping name in DRUG and EFFECT.
 def drop_incorrect_sentences(data):
     find_double_index = list()
 

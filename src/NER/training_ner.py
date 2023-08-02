@@ -148,9 +148,9 @@ def compute_batch_weights(batch_labels):
         if missed_class:
             for missed in missed_class:
                 if missed < len(weights):
-                    weights = np.insert(weights, missed, np.max(weights) * len(id_label))
+                    weights = np.insert(weights, missed, np.max(weights) + np.mean(weights))
                 else:
-                    weights = np.append(weights, np.max(weights) * len(id_label))
+                    weights = np.append(weights, np.max(weights) + np.mean(weights))
 
         class_weights += weights
 
