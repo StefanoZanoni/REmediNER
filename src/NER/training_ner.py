@@ -157,7 +157,7 @@ class TrainerNer:
         predicted_output = torch.argmax(logits, dim=-1)
 
         self.loss_weights.to(self.gpu_id)
-        loss_fun = torch.nn.CrossEntropyLoss(reduction='none').to(self.gpu_id)
+        loss_fun = torch.nn.CrossEntropyLoss(weight=self.loss_weights, reduction='none').to(self.gpu_id)
 
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss_masked = loss_fun(logits, labels)
@@ -284,7 +284,7 @@ class TrainerNer:
             logits = model(ids, masks, effective_batch_size)
             predicted_output = torch.argmax(logits, dim=-1)
 
-            loss_fun = torch.nn.CrossEntropyLoss(reduction='none').to(self.gpu_id)
+            loss_fun = torch.nn.CrossEntropyLoss(weight=self.loss_weights, reduction='none').to(self.gpu_id)
             logits = torch.transpose(logits, dim0=1, dim1=2)
             loss_masked = loss_fun(logits, labels)
             pad = -100
