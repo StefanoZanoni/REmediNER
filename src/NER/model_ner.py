@@ -114,7 +114,7 @@ class NerModel(torch.nn.Module):
     #
     #     return logits
 
-    def forward(self, ids, mask, effective_batch_size):
+    def forward(self, ids, mask, labels):
         bert_output = self.bert(ids, attention_mask=mask, return_dict=False)
 
         # concatenate the last four hidden states
@@ -126,4 +126,14 @@ class NerModel(torch.nn.Module):
         #
         # logits = self.__bert_head(bert_output, effective_batch_size)
 
-        return logits
+        loss_fun = torch.nn.CrossEntropyLoss(reduction='none')
+
+        logits = torch.transpose(logits, dim0=1, dim1=2)
+        loss_masked = loss_fun(logits, labels)
+        pad = -100
+        loss_mask = labels != pad
+        loss = loss_masked.sum() / loss_mask.sum()
+
+        logits = torch.transpose(logits, dim0=1, dim1=2)
+
+        return {'loss': loss, 'logits': logits}
