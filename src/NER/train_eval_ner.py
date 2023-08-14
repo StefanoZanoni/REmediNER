@@ -1,3 +1,5 @@
+import logging
+
 from transformers import Trainer, TrainingArguments
 from src.NER.model_ner import NerModel
 
@@ -49,6 +51,7 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         logging_dir="./logs",
         logging_first_step=True,
         push_to_hub=False,
+        log_level=logging.WARNING
     )
 
     # Initialize the Trainer
