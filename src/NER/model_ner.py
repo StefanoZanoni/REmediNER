@@ -8,8 +8,8 @@ def model_bert(model_name, id_label, label_id):
     model = AutoModelForTokenClassification.from_pretrained(model_name, id2label=id_label, label2id=label_id)
 
     # freeze the bert parameters, train just the classifier
-    for param in model.bert.parameters():
-        param.requires_grad = False
+    # for param in model.bert.parameters():
+    #     param.requires_grad = False
 
     return model
 
@@ -23,59 +23,59 @@ class NerModel(torch.nn.Module):
         self.input_size = input_size
         self.bert = model_bert(model_name, id_label, label_id)
 
-        # bert head for NER
-        padding = (0, 0)
-        dilation = (1, 1)
-        kernel_size = (16, 128)
-        stride = (2, 2)
-        h_in = 768 * 4
-        w_in = input_size
-        self.conv1 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=stride)
-        h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
-        w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
-        self.conv_swish1 = torch.nn.SiLU()
-        kernel_size = (8, 64)
-        stride = (1, 1)
-        h_in = h_out
-        w_in = w_out
-        self.conv_max_pool1 = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
-        h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
-        w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
-
-        kernel_size = (16, 128)
-        stride = (2, 2)
-        h_in = h_out
-        w_in = w_out
-        self.conv2 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=stride)
-        h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
-        w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
-        self.conv_swish2 = torch.nn.SiLU()
-        kernel_size = (8, 64)
-        stride = (1, 1)
-        h_in = h_out
-        w_in = w_out
-        self.conv_max_pool2 = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
-        h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
-        w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
-
-        kernel_size = (16, 128)
-        stride = (2, 2)
-        h_in = h_out
-        w_in = w_out
-        self.conv3 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=stride)
-        h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
-        w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
-        self.conv_swish3 = torch.nn.SiLU()
-        h_in = h_out
-        w_in = w_out
-        self.conv_max_pool3 = torch.nn.AdaptiveMaxPool2d((35, 10))
-        h_out = 10
-        w_out = 35
-
-        self.conv_flatten = torch.nn.Flatten()
-        linear_in_size = h_out * w_out
-        self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
-        self.conv_linear_gelu = torch.nn.GELU()
+        # # bert head for NER
+        # padding = (0, 0)
+        # dilation = (1, 1)
+        # kernel_size = (16, 128)
+        # stride = (2, 2)
+        # h_in = 768 * 4
+        # w_in = input_size
+        # self.conv1 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=stride)
+        # h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
+        # w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
+        # self.conv_swish1 = torch.nn.SiLU()
+        # kernel_size = (8, 64)
+        # stride = (1, 1)
+        # h_in = h_out
+        # w_in = w_out
+        # self.conv_max_pool1 = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
+        # h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
+        # w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
+        #
+        # kernel_size = (16, 128)
+        # stride = (2, 2)
+        # h_in = h_out
+        # w_in = w_out
+        # self.conv2 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=stride)
+        # h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
+        # w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
+        # self.conv_swish2 = torch.nn.SiLU()
+        # kernel_size = (8, 64)
+        # stride = (1, 1)
+        # h_in = h_out
+        # w_in = w_out
+        # self.conv_max_pool2 = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
+        # h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
+        # w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
+        #
+        # kernel_size = (16, 128)
+        # stride = (2, 2)
+        # h_in = h_out
+        # w_in = w_out
+        # self.conv3 = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=stride)
+        # h_out = int(np.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1]) + 1)
+        # w_out = int(np.floor((w_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0]) + 1)
+        # self.conv_swish3 = torch.nn.SiLU()
+        # h_in = h_out
+        # w_in = w_out
+        # self.conv_max_pool3 = torch.nn.AdaptiveMaxPool2d((35, 10))
+        # h_out = 10
+        # w_out = 35
+        #
+        # self.conv_flatten = torch.nn.Flatten()
+        # linear_in_size = h_out * w_out
+        # self.conv_linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
+        # self.conv_linear_gelu = torch.nn.GELU()
 
     def get_optimizer(self):
         optimizer = torch.optim.AdamW(NerModel.parameters(self),
@@ -115,18 +115,17 @@ class NerModel(torch.nn.Module):
         return logits
 
     def forward(self, ids, mask, labels):
-        bert_output = self.bert(ids, attention_mask=mask, return_dict=False, output_hidden_states=True)
+        bert_output = self.bert(ids, attention_mask=mask, return_dict=False)
 
         # concatenate the last four hidden states
-        # logits = bert_output[0]
-        bert_output = bert_output[1]
-        effective_batch_size = list(bert_output[0].size())[0]
-        num_hidden_states = len(bert_output)
-        bert_output = [bert_output[num_hidden_states - 1 - 1], bert_output[num_hidden_states - 1 - 2],
-                       bert_output[num_hidden_states - 1 - 3], bert_output[num_hidden_states - 1 - 4]]
-        bert_output = torch.concat(bert_output, dim=-1)
-
-        logits = self.__bert_head(bert_output, effective_batch_size)
+        logits = bert_output[0]
+        # bert_output = bert_output[2]
+        # effective_batch_size = list(bert_output[0].size())[0]
+        # num_hidden_states = len(bert_output)
+        # bert_output = [bert_output[num_hidden_states - 1 - 1], bert_output[num_hidden_states - 1 - 2],
+        #                bert_output[num_hidden_states - 1 - 3], bert_output[num_hidden_states - 1 - 4]]
+        # bert_output = torch.concat(bert_output, dim=-1)
+        # logits = self.__bert_head(bert_output, effective_batch_size)
 
         loss_fun = torch.nn.CrossEntropyLoss(reduction='none')
 
