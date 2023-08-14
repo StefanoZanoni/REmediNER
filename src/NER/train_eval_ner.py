@@ -19,7 +19,7 @@ def compute_metrics(p: 'EvalPrediction'):
     precision = precision_score(labels_flat, preds_flat, average='macro')
     recall = recall_score(labels_flat, preds_flat, average='macro')
     f1 = f1_score(labels_flat, preds_flat, average='macro')
-    conf_matrix = confusion_matrix(labels_flat, preds_flat)
+    conf_matrix = confusion_matrix(labels_flat, preds_flat, normalize='true')
 
     return {
         'precision': precision,
@@ -38,24 +38,27 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     model = NerModel(model_name, input_size, id_label, label_id)
 
     # Define training arguments
+
     training_args = TrainingArguments(
         output_dir="./results",
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         logging_steps=100,
         save_steps=1000,
-        evaluation_strategy="steps",
+        evaluation_strategy="epoch",
         logging_dir="./logs",
         logging_first_step=True,
         push_to_hub=False,
     )
 
     # Initialize the Trainer
+
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         compute_metrics=compute_metrics,
+        eval_dataset=validation_dataset,
     )
 
     # Train the model
