@@ -31,7 +31,7 @@ def compute_metrics(p: 'EvalPrediction'):
     }
 
 
-def train_test_ner(bert_model, train_dataset, input_size, batch_size, epochs):
+def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, batch_size, epochs):
     model_name = bert_model['bert_model']
     id_label = bert_model['id_label']
     label_id = bert_model['label_id']
@@ -60,17 +60,31 @@ def train_test_ner(bert_model, train_dataset, input_size, batch_size, epochs):
 
     # Train the model
     trainer.train()
-    results = trainer.evaluate(train_dataset)
 
-    precision = results['precision']
-    recall = results['recall']
-    f1 = results['f1']
-    confusion_matrix = results['confusion_matrix']
+    # training performance
+    results = trainer.evaluate(train_dataset)
+    train_precision = results['eval_precision']
+    train_recall = results['eval_recall']
+    train_f1 = results['eval_f1']
+    train_confusion_matrix = results['eval_confusion_matrix']
+
+    # validation performance
+    results = trainer.evaluate(validation_dataset)
+    val_precision = results['eval_precision']
+    val_recall = results['eval_recall']
+    val_f1 = results['eval_f1']
+    val_confusion_matrix = results['eval_confusion_matrix']
 
     # Return or print the metrics as desired
-    print(f"Precision: {precision}")
-    print(f"Recall: {recall}")
-    print(f"F1 Score: {f1}")
-    print(f"Confusion Matrix: \n{confusion_matrix}")
+    print(f"Train Precision: {train_precision}")
+    print(f"Train Recall: {train_recall}")
+    print(f"Train F1 Score: {train_f1}")
+    print(f"Train Confusion Matrix: \n{train_confusion_matrix}")
+
+    # Return or print the metrics as desired
+    print(f"Validation Precision: {val_precision}")
+    print(f"Validation Recall: {val_recall}")
+    print(f"Validation F1 Score: {val_f1}")
+    print(f"Validation Confusion Matrix: \n{val_confusion_matrix}")
 
     return model

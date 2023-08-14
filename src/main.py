@@ -106,7 +106,7 @@ def train_ner(data, epochs, batch_size, rank, world_size, input_length):
                   'len_labels': len_labels,
                   'id_label': id_label,
                   'label_id': label_id}
-    ner_model = train_test_ner(bert_model, train_ner_dataset, input_length, batch_size, epochs)
+    ner_model = train_test_ner(bert_model, train_ner_dataset, test_ner_dataset, input_length, batch_size, epochs)
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
