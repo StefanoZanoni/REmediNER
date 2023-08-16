@@ -66,17 +66,13 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         output_dir="./NER/results",
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        learning_rate=5e-5,
+        logging_steps=100,
+        save_steps=1000,
         evaluation_strategy="epoch",
         logging_dir="./NER/logs",
         logging_first_step=True,
-        logging_strategy="epoch",
         push_to_hub=False,
-        log_level='error',
-        save_strategy="epoch",
-        seed=0,
-        data_seed=0,
+        log_level='error'
     )
 
     # Initialize the Trainer
@@ -116,6 +112,6 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     print(f"Validation Precision: {val_precision}")
     print(f"Validation Recall: {val_recall}")
     print(f"Validation F1 Score: {val_f1}")
-    plot_heat_map(train_confusion_matrix, 'Validation confusion matrix')
+    plot_heat_map(val_confusion_matrix, 'Validation confusion matrix')
 
     return model
