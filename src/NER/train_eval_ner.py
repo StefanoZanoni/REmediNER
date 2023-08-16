@@ -1,10 +1,31 @@
 import logging
+import torch
 
 from transformers import Trainer, TrainingArguments
 from src.NER.model_ner import NerModel
 
 from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
 import numpy as np
+
+from src.plot import plot_heat_map
+
+
+class NERTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False):
+        labels = inputs.get("labels")
+        outputs = model(**inputs)
+        logits = outputs.get("logits")
+        loss_weights = model.loss_weights.to(0)
+
+        loss_fun = torch.nn.CrossEntropyLoss(weight=loss_weights, reduction='none')
+
+        logits = torch.transpose(logits, dim0=1, dim1=2)
+        loss_masked = loss_fun(logits, labels)
+        pad = -100
+        loss_mask = labels != pad
+        loss = loss_masked.sum() / loss_mask.sum()
+
+        return (loss, outputs) if return_outputs else loss
 
 
 def compute_metrics(p: 'EvalPrediction'):
@@ -33,30 +54,34 @@ def compute_metrics(p: 'EvalPrediction'):
     }
 
 
-def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, batch_size, epochs):
+def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, batch_size, epochs, loss_weights):
     model_name = bert_model['bert_model']
     id_label = bert_model['id_label']
     label_id = bert_model['label_id']
-    model = NerModel(model_name, input_size, id_label, label_id)
+    model = NerModel(model_name, input_size, id_label, label_id, loss_weights)
 
     # Define training arguments
 
     training_args = TrainingArguments(
-        output_dir="./results",
+        output_dir="./NER/results",
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
-        logging_steps=100,
-        save_steps=1000,
+        per_device_eval_batch_size=batch_size,
+        learning_rate=5e-5,
         evaluation_strategy="epoch",
-        logging_dir="./logs",
+        logging_dir="./NER/logs",
         logging_first_step=True,
+        logging_strategy="epoch",
         push_to_hub=False,
-        log_level='error'
+        log_level='error',
+        save_strategy="epoch",
+        seed=0,
+        data_seed=0,
     )
 
     # Initialize the Trainer
 
-    trainer = Trainer(
+    trainer = NERTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
@@ -85,12 +110,12 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     print(f"Train Precision: {train_precision}")
     print(f"Train Recall: {train_recall}")
     print(f"Train F1 Score: {train_f1}")
-    print(f"Train Confusion Matrix: \n{train_confusion_matrix}")
+    plot_heat_map(train_confusion_matrix, 'Training confusion matrix')
 
     # Return or print the metrics as desired
     print(f"Validation Precision: {val_precision}")
     print(f"Validation Recall: {val_recall}")
     print(f"Validation F1 Score: {val_f1}")
-    print(f"Validation Confusion Matrix: \n{val_confusion_matrix}")
+    plot_heat_map(train_confusion_matrix, 'Validation confusion matrix')
 
     return model

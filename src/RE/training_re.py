@@ -10,7 +10,6 @@ from sklearn.model_selection import KFold
 
 from src.RE.model_re import ReModel
 from src.early_stopping import EarlyStopper
-from src.plot import plot_loss
 
 
 def save_checkpoint(epoch, model):

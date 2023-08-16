@@ -1,3 +1,4 @@
+import sys
 import os
 from ast import literal_eval
 
@@ -36,7 +37,7 @@ tokenizer_re = BertTokenizerFast.from_pretrained(bert_name_re)
 transformers.utils.logging.set_verbosity_error()
 
 
-def train_re(data_re, epochs, batch_size, rank, world_size, input_length):
+def train_re(data_re, epochs, batch_size, input_length):
     # RE data
     tokenized_texts, tokenized_annotation, tokenized_pos = tokenize_text_re(data_re, tokenizer_re)
     pos_indexes, max_number_pos = compute_pos_indexes(tokenized_pos, input_length)
@@ -81,63 +82,50 @@ def train_re(data_re, epochs, batch_size, rank, world_size, input_length):
     return re_model, outputs_test_re_final
 
 
-def train_ner(data, epochs, batch_size, rank, world_size, input_length):
+def train_ner(data, epochs, batch_size, input_length):
     # NER data
     id_label, label_id, len_labels = get_labels_id()
     train_in_ner, test_in_ner, train_out_ner, test_out_ner = split_train_test_ner(data)
-    test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final = split_test_ner(test_in_ner, test_out_ner)
+    val_in_ner, test_in_ner_final, val_out_ner, test_out_ner_final = split_test_ner(test_in_ner, test_out_ner)
 
     # train data
     tokenized_texts_train_ner, tokenized_labels_train_ner = tokenize_text_ner(train_in_ner, train_out_ner,
                                                                               tokenizer_ner)
     ner_ids, ner_masks, ner_labels = \
         get_ner_inputs(tokenized_texts_train_ner, tokenized_labels_train_ner, tokenizer_ner, label_id, input_length)
-    ner_weights = compute_weights(ner_labels.numpy())
+    loss_weights = torch.tensor(compute_weights(ner_labels.numpy()), dtype=torch.float32)
     train_ner_dataset = NERDataset(ner_ids, ner_masks, ner_labels)
 
     # test data
-    tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner, test_out_ner, tokenizer_ner)
+    tokenized_texts_val_ner, tokenized_labels_val_ner = tokenize_text_ner(val_in_ner, val_out_ner, tokenizer_ner)
     ner_ids, ner_masks, ner_labels = \
-        get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer_ner, label_id, input_length)
-    test_ner_dataset = NERDataset(ner_ids, ner_masks, ner_labels)
+        get_ner_inputs(tokenized_texts_val_ner, tokenized_labels_val_ner, tokenizer_ner, label_id, input_length)
+    val_ner_dataset = NERDataset(ner_ids, ner_masks, ner_labels)
 
     # NER training
     bert_model = {'bert_model': bert_name_ner,
                   'len_labels': len_labels,
                   'id_label': id_label,
                   'label_id': label_id}
-    ner_model = train_test_ner(bert_model, train_ner_dataset, test_ner_dataset, input_length, batch_size, epochs)
+    ner_model = (
+        train_test_ner(bert_model, train_ner_dataset, val_ner_dataset, input_length, batch_size, epochs, loss_weights))
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
-    # test_ner(inputs_test_ner, outputs_test_ner, ner_model, batch_size, world_size, rank, id_label, ner_weights, input_length)
-    #
-    # # final test data
-    # tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
-    #                                                                         tokenizer_ner)
-    # ner_ids, ner_masks, _ = \
-    #     get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer_ner, label_id, input_length)
-    # inputs_test_ner_final = TensorDataset(ner_ids, ner_masks)
-    #
-    # return ner_model, inputs_test_ner_final, id_label
+    
+    # final test data
+    tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
+                                                                            tokenizer_ner)
+    ner_ids, ner_masks, _ = \
+        get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer_ner, label_id, input_length)
+    inputs_test_ner_final = TensorDataset(ner_ids, ner_masks)
+
+    return ner_model, inputs_test_ner_final, id_label
 
 
-def ddp_setup(rank: int, world_size: int):
-    """
-    Args:
-    rank: Unique identifier of each process
-    world_size: Total number of processes
-    """
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
-    init_process_group(backend="nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
-
-
-def main(rank, world_size, epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
+def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
     global bert_name_re
     global bert_name_ner
-    ddp_setup(rank, world_size)
 
     # create the folder to store pre-processed data
     if not os.path.exists('../data'):
@@ -165,8 +153,7 @@ def main(rank, world_size, epochs=10, batch_size=32, ner_input_length=128, re_in
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
     # train the model for NER task
-    ner_model, final_inputs, id_label = \
-        train_ner(data_ner, epochs, batch_size, rank, world_size, ner_input_length)
+    ner_model, final_inputs, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
 
     # train the model for RE task
     # re_model, final_outputs = \
@@ -176,11 +163,8 @@ def main(rank, world_size, epochs=10, batch_size=32, ner_input_length=128, re_in
     # final_model = FinalModel(ner_model, re_model, tokenizer_ner, id_label, rank, re_input_length)
     # test_final(final_model, final_inputs, final_outputs, batch_size, world_size, rank)
 
-    destroy_process_group()
-
 
 if __name__ == '__main__':
-    import sys
 
     # read parameters from command line
     epochs = int(sys.argv[1])
@@ -188,10 +172,4 @@ if __name__ == '__main__':
     ner_input_length = int(sys.argv[3])
     re_input_length = int(sys.argv[4])
 
-    # retrieve the number of gpus available
-    world_size = torch.cuda.device_count()
-
-    # create the main process for each gpu
-    mp.spawn(main,
-             args=(world_size, epochs, batch_size, ner_input_length, re_input_length,),
-             nprocs=world_size)
+    main(epochs, batch_size, ner_input_length, re_input_length)

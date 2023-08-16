@@ -16,12 +16,13 @@ def model_bert(model_name, id_label, label_id):
 
 class NerModel(torch.nn.Module):
 
-    def __init__(self, model_name, input_size, id_label, label_id):
+    def __init__(self, model_name, input_size, id_label, label_id, loss_weights):
         super(NerModel, self).__init__()
 
         self.hidden_size = 768
         self.input_size = input_size
         self.bert = model_bert(model_name, id_label, label_id)
+        self.loss_weights = loss_weights
 
         # # bert head for NER
         # padding = (0, 0)
@@ -127,14 +128,4 @@ class NerModel(torch.nn.Module):
         # bert_output = torch.concat(bert_output, dim=-1)
         # logits = self.__bert_head(bert_output, effective_batch_size)
 
-        loss_fun = torch.nn.CrossEntropyLoss(reduction='none')
-
-        logits = torch.transpose(logits, dim0=1, dim1=2)
-        loss_masked = loss_fun(logits, labels)
-        pad = -100
-        loss_mask = labels != pad
-        loss = loss_masked.sum() / loss_mask.sum()
-
-        logits = torch.transpose(logits, dim0=1, dim1=2)
-
-        return {'loss': loss, 'logits': logits}
+        return {'logits': logits}
