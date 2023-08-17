@@ -76,6 +76,7 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     )
 
     # Initialize the Trainer
+
     trainer = RETrainer(
         model=model,
         args=training_args,
