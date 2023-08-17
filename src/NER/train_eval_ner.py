@@ -48,7 +48,7 @@ def compute_metrics(p: 'EvalPrediction'):
         'precision': precision,
         'recall': recall,
         'f1': f1,
-        'confusion_matrix': conf_matrix,
+        'confusion_matrix': conf_matrix.tolist(),
         'predictions': preds_flat,
         'true_labels': labels_flat
     }
@@ -66,6 +66,8 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         output_dir="./NER/results",
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        learning_rate=5e-5,
         logging_steps=100,
         save_steps=1000,
         evaluation_strategy="epoch",
@@ -93,14 +95,14 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     train_precision = results['eval_precision']
     train_recall = results['eval_recall']
     train_f1 = results['eval_f1']
-    train_confusion_matrix = results['eval_confusion_matrix']
+    train_confusion_matrix = np.array(results['eval_confusion_matrix'])
 
     # validation performance
     results = trainer.evaluate(validation_dataset)
     val_precision = results['eval_precision']
     val_recall = results['eval_recall']
     val_f1 = results['eval_f1']
-    val_confusion_matrix = results['eval_confusion_matrix']
+    val_confusion_matrix = np.array(results['eval_confusion_matrix'])
 
     # Return or print the metrics as desired
     print(f"Train Precision: {train_precision}")

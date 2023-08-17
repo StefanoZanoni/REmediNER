@@ -6,7 +6,6 @@ import pandas as pd
 import torch
 import torch.multiprocessing as mp
 import transformers
-from torch.distributed import init_process_group, destroy_process_group
 from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 from torchsummary import summary
@@ -59,8 +58,6 @@ def train_re(data_re, epochs, batch_size, input_length):
     test_in_pos_re = torch.tensor(test_in_pos_re, dtype=torch.int32)
     inputs_test_re = TensorDataset(test_re_ids, test_re_masks, test_in_pos_re)
     outputs_test_re = TensorDataset(test_re_annotations)
-
-    context_mean_length = compute_context_mean_length(data_re)
 
     # RE training
     re_trainer = TrainerRe(bert_name_re, inputs_train_re, outputs_train_re, epochs, batch_size, rank, save_every,
