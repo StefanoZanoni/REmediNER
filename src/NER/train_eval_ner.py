@@ -70,7 +70,6 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         learning_rate=5e-5,
         logging_steps=100,
         save_steps=1000,
-        evaluation_strategy="epoch",
         logging_dir="./NER/logs",
         logging_first_step=True,
         push_to_hub=False,
@@ -84,7 +83,6 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         args=training_args,
         train_dataset=train_dataset,
         compute_metrics=compute_metrics,
-        eval_dataset=validation_dataset,
     )
 
     # Train the model
