@@ -12,7 +12,6 @@ from torchsummary import summary
 
 from src.FINALMODEL.final_model import FinalModel
 from src.FINALMODEL.testing_final import test_final
-from src.RE.testing_re import test_re
 from src.data_utilities import load_data, pre_process_texts
 from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
     tokenize_text_ner, get_ner_inputs, prepare_data_for_ner, split_test_ner, compute_weights
@@ -20,7 +19,8 @@ from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_c
     split_train_test_re, get_re_inputs, compute_pos_indexes, split_test_re
 from src.NER.train_eval_ner import train_test_ner
 from src.NER.ner_dataset import NERDataset
-from src.RE.training_re import TrainerRe
+from src.RE.re_dataset import REDataset
+from src.RE.train_eval_re import train_test_re
 
 # bert_name_ner = "d4data/biomedical-ner-all"
 # bert_name_ner = "ukkendane/bert-medical-ner"
@@ -40,41 +40,35 @@ def train_re(data_re, epochs, batch_size, input_length):
     # RE data
     tokenized_texts, tokenized_annotation, tokenized_pos = tokenize_text_re(data_re, tokenizer_re)
     pos_indexes, max_number_pos = compute_pos_indexes(tokenized_pos, input_length)
-    train_in_texts_re, train_in_pos_re, test_in_texts_re, test_in_pos_re, \
-        train_out_re, test_out_re = split_train_test_re(tokenized_texts, pos_indexes, tokenized_annotation)
-    test_in_texts_re, test_in_pos_re, test_in_texts_re_final, test_in_pos_re_final, test_out_re, test_out_re_final = \
-        split_test_re(test_in_texts_re, test_in_pos_re, test_out_re)
+    train_in_texts_re, train_in_pos_re, val_in_texts_re, val_in_pos_re, \
+        train_out_re, val_out_re = split_train_test_re(tokenized_texts, pos_indexes, tokenized_annotation)
+    val_in_texts_re, val_in_pos_re, test_in_texts_re_final, test_in_pos_re_final, val_out_re, test_out_re_final = \
+        split_test_re(val_in_texts_re, val_in_pos_re, val_out_re)
 
     # train data
     train_re_ids, train_re_masks, train_re_annotations = \
         get_re_inputs(train_in_texts_re, train_out_re, tokenizer_re, input_length)
     train_in_pos_re = torch.tensor(train_in_pos_re, dtype=torch.int32)
-    inputs_train_re = TensorDataset(train_re_ids, train_re_masks, train_in_pos_re)
-    outputs_train_re = TensorDataset(train_re_annotations)
+    train_re_dataset = REDataset(train_re_ids, train_re_masks, train_in_pos_re, train_re_annotations)
 
     # test data
-    test_re_ids, test_re_masks, test_re_annotations = \
-        get_re_inputs(test_in_texts_re, test_out_re, tokenizer_re, input_length)
-    test_in_pos_re = torch.tensor(test_in_pos_re, dtype=torch.int32)
-    inputs_test_re = TensorDataset(test_re_ids, test_re_masks, test_in_pos_re)
-    outputs_test_re = TensorDataset(test_re_annotations)
+    val_re_ids, val_re_masks, val_re_annotations = \
+        get_re_inputs(val_in_texts_re, val_out_re, tokenizer_re, input_length)
+    val_in_pos_re = torch.tensor(val_in_pos_re, dtype=torch.int32)
+    val_re_dataset = REDataset(val_re_ids, val_re_masks, val_in_pos_re, val_re_annotations)
 
     # RE training
-    re_trainer = TrainerRe(bert_name_re, inputs_train_re, outputs_train_re, epochs, batch_size, rank, save_every,
-                           world_size, max_number_pos, input_length)
-    re_output, max_epoch = re_trainer.kfold_cross_validation(k=5)
-    # retrain on the whole development set
-    re_model = re_trainer.re_train(max_epoch)
+    re_model = train_test_re(bert_name_re, train_re_dataset, val_re_dataset, input_length,
+                             batch_size, epochs, max_number_pos)
     summary(re_model,
-            input_size=[(batch_size, input_length), (batch_size, input_length), (batch_size, input_length), 1,
-                        batch_size],
-            dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor', 'Object', 'Int'])
-    test_re(inputs_test_re, outputs_test_re, re_model, batch_size, world_size, rank, max_number_pos)
+            input_size=[(batch_size, input_length), (batch_size, input_length),
+                        (batch_size, input_length), (batch_size, input_length)],
+            dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor'])
 
     # final test data
-    _, _, test_re_annotations = \
+    _, _, val_re_annotations = \
         get_re_inputs(test_in_texts_re_final, test_out_re_final, tokenizer_re, input_length)
-    outputs_test_re_final = TensorDataset(test_re_annotations)
+    outputs_test_re_final = TensorDataset(val_re_annotations)
 
     return re_model, outputs_test_re_final
 
@@ -109,7 +103,7 @@ def train_ner(data, epochs, batch_size, input_length):
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
-    
+
     # final test data
     tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
                                                                             tokenizer_ner)
@@ -150,11 +144,10 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
     # train the model for NER task
-    ner_model, final_inputs, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
+    # ner_model, final_inputs, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
 
     # train the model for RE task
-    # re_model, final_outputs = \
-    #     train_re(data_re, epochs, batch_size, rank, save_every, world_size, re_input_length)
+    re_model, final_outputs = train_re(data_re, epochs, batch_size, re_input_length)
 
     # build the final model from the union of the NER model and RE model
     # final_model = FinalModel(ner_model, re_model, tokenizer_ner, id_label, rank, re_input_length)
@@ -162,7 +155,6 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
 
 
 if __name__ == '__main__':
-
     # read parameters from command line
     epochs = int(sys.argv[1])
     batch_size = int(sys.argv[2])

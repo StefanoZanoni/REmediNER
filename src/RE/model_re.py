@@ -14,13 +14,12 @@ def model_bert(model_name):
 
 class ReModel(torch.nn.Module):
 
-    def __init__(self, bert_name, batch_size, input_size):
+    def __init__(self, bert_name, input_size, embedding):
         super(ReModel, self).__init__()
 
         self.hidden_size = 768
-        self.batch_size = batch_size
         self.input_size = input_size
-
+        self.embedding = embedding
         self.bert = model_bert(bert_name)
 
         # bert head for RE
@@ -33,16 +32,8 @@ class ReModel(torch.nn.Module):
         self.linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
         self.gelu = torch.nn.GELU()
 
-    def get_optimizer(self):
-        optimizer = torch.optim.AdamW(ReModel.parameters(self),
-                                      lr=1e-5,  # args.learning_rate - default is 5e-5
-                                      eps=1e-8  # args.adam_epsilon  - default is 1e-8.
-                                      )
-        return optimizer
-
-    def __bert_head(self, bert_output, pos, embedding, effective_batch_size):
-        # bilstm computation
-        pos_embedding = embedding(pos)
+    def __bert_head(self, bert_output, pos, effective_batch_size):
+        pos_embedding = self.embedding(pos)
         lstm_input = torch.concat([bert_output, pos_embedding], dim=-1)
         bilstm_out = self.lstm(lstm_input)[0]
         flatten_out = self.lstm_flatten(bilstm_out)
@@ -53,8 +44,8 @@ class ReModel(torch.nn.Module):
 
         return logits
 
-    def forward(self, ids, masks, pos, embedding, effective_batch_size):
-        bert_output = self.bert(ids, attention_mask=masks, return_dict=False, output_hidden_states=True)
+    def forward(self, ids, mask, pos, annotations):
+        bert_output = self.bert(ids, attention_mask=mask, return_dict=False, output_hidden_states=True)
 
         # concatenate the last four hidden states
         bert_output = bert_output[2]
@@ -62,7 +53,8 @@ class ReModel(torch.nn.Module):
         bert_output = [bert_output[num_hidden_states - 1 - 1], bert_output[num_hidden_states - 1 - 2],
                        bert_output[num_hidden_states - 1 - 3], bert_output[num_hidden_states - 1 - 4]]
         bert_output = torch.concat(bert_output, dim=-1)
+        effective_batch_size = list(annotations.size())[0]
 
-        output = self.__bert_head(bert_output, pos, embedding, effective_batch_size)
+        logits = self.__bert_head(bert_output, pos, effective_batch_size)
 
-        return output
+        return {'logits': logits}

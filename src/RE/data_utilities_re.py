@@ -12,6 +12,23 @@ def mask_texts(texts, drugs, effects, concatenation=False):
     masked_texts = []
 
     annotation = 1
+    founded_drugs = set()
+    founded_effects = set()
+    if concatenation:
+        drug_associations = {}
+        effect_associations = {}
+        for idx, (drug, effect) in enumerate(zip(drugs, effects)):
+            drug = drug.split()
+            effect = effect.split()
+            for el in drug:
+                founded_drugs.add(el)
+                drug_associations.setdefault(el, idx + 1)
+            for el in effect:
+                founded_effects.add(el)
+                drug = drugs[idx]
+                drug = drug.split()
+                drug = drug[0]
+                effect_associations.setdefault(el, drug_associations[drug])
 
     founded_drugs = set()
     founded_effects = set()
@@ -25,19 +42,20 @@ def mask_texts(texts, drugs, effects, concatenation=False):
             if w in drug:
                 if "DRUG" not in new_sent and w not in founded_drugs:
                     new_sent.append("DRUG")
-                    masking.append(annotation)
-                founded_drugs.add(w)
+                    if concatenation:
+                        masking.append(drug_associations[w])
+                    else:
+                        masking.append(annotation)
             elif w in effect:
                 if "EFFECT" not in new_sent and w not in founded_effects:
                     new_sent.append("EFFECT")
-                    masking.append(annotation)
-                founded_effects.add(w)
+                    if concatenation:
+                        masking.append(effect_associations[w])
+                    else:
+                        masking.append(annotation)
             else:
                 new_sent.append(w)
                 masking.append(0)
-
-        if concatenation:
-            annotation += 1
 
         annotations.append(masking)  # Sentences in str with annotation DRUG-EFFECT
         masked_texts.append(" ".join(new_sent))  # Masked sentences
@@ -214,7 +232,7 @@ def split_test_re(texts_input, pos_input, output):
         test_in_re_texts_final.append(el[0])
         test_in_re_pos_final.append(el[1])
 
-    return test_in_re_texts, test_in_re_pos, test_in_re_texts_final, test_in_re_pos_final,\
+    return test_in_re_texts, test_in_re_pos, test_in_re_texts_final, test_in_re_pos_final, \
         test_out_re, test_out_re_final
 
 
