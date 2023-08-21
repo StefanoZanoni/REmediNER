@@ -12,7 +12,7 @@ from src.plot import plot_heat_map
 
 class RETrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
-        annotations = inputs.get("annotations")
+        annotations = inputs.get("labels")
         outputs = model(**inputs)
         logits = outputs.get("logits")
 
@@ -41,13 +41,11 @@ def compute_metrics(p: 'EvalPrediction'):
     precision = precision_score(labels_flat, preds_flat, average='macro')
     recall = recall_score(labels_flat, preds_flat, average='macro')
     f1 = f1_score(labels_flat, preds_flat, average='macro')
-    conf_matrix = confusion_matrix(labels_flat, preds_flat, normalize='true')
 
     return {
         'precision': precision,
         'recall': recall,
         'f1': f1,
-        'confusion_matrix': conf_matrix.tolist(),
         'predictions': preds_flat,
         'true_labels': labels_flat
     }
@@ -66,12 +64,14 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         learning_rate=5e-5,
-        logging_steps=100,
-        save_steps=1000,
+        optim="adamw_torch",
+        logging_strategy="epoch",
+        save_strategy="epoch",
         logging_dir="./RE/logs",
         logging_first_step=True,
         push_to_hub=False,
-        log_level='error'
+        seed=0,
+        data_seed=0,
     )
 
     # Initialize the Trainer
@@ -82,6 +82,8 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
         train_dataset=train_dataset,
         compute_metrics=compute_metrics,
     )
+    for batch in trainer.get_eval_dataloader(validation_dataset):
+        break
 
     # Train the model
     trainer.train()
@@ -91,25 +93,21 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     train_precision = results['eval_precision']
     train_recall = results['eval_recall']
     train_f1 = results['eval_f1']
-    train_confusion_matrix = np.array(results['eval_confusion_matrix'])
 
     # validation performance
     results = trainer.evaluate(validation_dataset)
     val_precision = results['eval_precision']
     val_recall = results['eval_recall']
     val_f1 = results['eval_f1']
-    val_confusion_matrix = np.array(results['eval_confusion_matrix'])
 
     # Return or print the metrics as desired
     print(f"Train Precision: {train_precision}")
     print(f"Train Recall: {train_recall}")
     print(f"Train F1 Score: {train_f1}")
-    plot_heat_map(train_confusion_matrix, 'Training confusion matrix')
 
     # Return or print the metrics as desired
     print(f"Validation Precision: {val_precision}")
     print(f"Validation Recall: {val_recall}")
     print(f"Validation F1 Score: {val_f1}")
-    plot_heat_map(val_confusion_matrix, 'Validation confusion matrix')
 
     return model

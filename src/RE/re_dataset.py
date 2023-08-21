@@ -16,5 +16,5 @@ class REDataset(torch.utils.data.Dataset):
             'ids': self.input_ids[idx],
             'mask': self.input_masks[idx],
             'pos': self.input_pos[idx],
-            'annotations': self.input_annotations[idx]
+            'labels': self.input_annotations[idx]
         }

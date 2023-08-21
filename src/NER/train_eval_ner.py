@@ -67,13 +67,16 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
-        learning_rate=5e-5,
+        learning_rate=1e-4,
+        optim="adamw_torch",
+        logging_strategy="steps",
         logging_steps=100,
-        save_steps=1000,
+        save_strategy="steps",
         logging_dir="./NER/logs",
         logging_first_step=True,
         push_to_hub=False,
-        log_level='error'
+        seed=0,
+        data_seed=0,
     )
 
     # Initialize the Trainer

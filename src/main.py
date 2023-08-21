@@ -144,10 +144,10 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
     # train the model for NER task
-    # ner_model, final_inputs, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
+    ner_model, final_inputs, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
 
     # train the model for RE task
-    re_model, final_outputs = train_re(data_re, epochs, batch_size, re_input_length)
+    # re_model, final_outputs = train_re(data_re, epochs, batch_size, re_input_length)
 
     # build the final model from the union of the NER model and RE model
     # final_model = FinalModel(ner_model, re_model, tokenizer_ner, id_label, rank, re_input_length)

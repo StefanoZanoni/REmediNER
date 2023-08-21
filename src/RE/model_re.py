@@ -44,7 +44,7 @@ class ReModel(torch.nn.Module):
 
         return logits
 
-    def forward(self, ids, mask, pos, annotations):
+    def forward(self, ids, mask, pos, labels):
         bert_output = self.bert(ids, attention_mask=mask, return_dict=False, output_hidden_states=True)
 
         # concatenate the last four hidden states
@@ -53,7 +53,7 @@ class ReModel(torch.nn.Module):
         bert_output = [bert_output[num_hidden_states - 1 - 1], bert_output[num_hidden_states - 1 - 2],
                        bert_output[num_hidden_states - 1 - 3], bert_output[num_hidden_states - 1 - 4]]
         bert_output = torch.concat(bert_output, dim=-1)
-        effective_batch_size = list(annotations.size())[0]
+        effective_batch_size = list(labels.size())[0]
 
         logits = self.__bert_head(bert_output, pos, effective_batch_size)
 
