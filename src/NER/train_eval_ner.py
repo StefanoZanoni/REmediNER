@@ -15,7 +15,8 @@ class NERTrainer(Trainer):
         labels = inputs.get("labels")
         outputs = model(**inputs)
         logits = outputs.get("logits")
-        loss_weights = model.loss_weights.to(0)
+        loss_weights = model.module.loss_weights.to(inputs['ids'].device) if hasattr(model, 'module')\
+            else model.loss_weights.to(inputs['ids'].device)
 
         loss_fun = torch.nn.CrossEntropyLoss(weight=loss_weights, reduction='none')
 
@@ -54,11 +55,12 @@ def compute_metrics(p: 'EvalPrediction'):
     }
 
 
-def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, batch_size, epochs, loss_weights):
+def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, batch_size, epochs,
+                   loss_weights_train, loss_weights_val):
     model_name = bert_model['bert_model']
     id_label = bert_model['id_label']
     label_id = bert_model['label_id']
-    model = NerModel(model_name, input_size, id_label, label_id, loss_weights)
+    model = NerModel(model_name, input_size, id_label, label_id, loss_weights_train)
 
     # Define training arguments
 
@@ -91,13 +93,6 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     # Train the model
     trainer.train()
 
-    # training performance
-    results = trainer.evaluate(train_dataset)
-    train_precision = results['eval_precision']
-    train_recall = results['eval_recall']
-    train_f1 = results['eval_f1']
-    train_confusion_matrix = np.array(results['eval_confusion_matrix'])
-
     # validation performance
     results = trainer.evaluate(validation_dataset)
     val_precision = results['eval_precision']
@@ -105,16 +100,27 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     val_f1 = results['eval_f1']
     val_confusion_matrix = np.array(results['eval_confusion_matrix'])
 
-    # Return or print the metrics as desired
-    print(f"Train Precision: {train_precision}")
-    print(f"Train Recall: {train_recall}")
-    print(f"Train F1 Score: {train_f1}")
-    plot_heat_map(train_confusion_matrix, 'Training confusion matrix')
-
-    # Return or print the metrics as desired
     print(f"Validation Precision: {val_precision}")
     print(f"Validation Recall: {val_recall}")
     print(f"Validation F1 Score: {val_f1}")
     plot_heat_map(val_confusion_matrix, 'Validation confusion matrix')
+
+    # re-train on the whole dataset
+    train_val_dataset = torch.utils.data.ConcatDataset([train_dataset, validation_dataset])
+    train_val_dataset = torch.utils.data.ConcatDataset([train_dataset, validation_dataset])
+    n = len(train_val_dataset)
+    train_len = len(train_dataset)
+    val_len = len(validation_dataset)
+    loss_weights_train = loss_weights_train * train_len / n
+    loss_weights_val = loss_weights_val * val_len / n
+    loss_weights = loss_weights_train + loss_weights_val
+    model = NerModel(model_name, input_size, id_label, label_id, loss_weights)
+    trainer = NERTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_val_dataset,
+    )
+    # Train the model
+    trainer.train()
 
     return model

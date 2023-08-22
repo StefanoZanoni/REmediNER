@@ -15,8 +15,10 @@ class RETrainer(Trainer):
         annotations = inputs.get("labels")
         outputs = model(**inputs)
         logits = outputs.get("logits")
+        loss_weights = model.module.loss_weights.to(inputs['ids'].device) if hasattr(model, 'module') \
+            else model.loss_weights.to(inputs['ids'].device)
 
-        loss_fun = torch.nn.CrossEntropyLoss(reduction='none')
+        loss_fun = torch.nn.CrossEntropyLoss(weight=loss_weights, reduction='none')
 
         logits = torch.transpose(logits, dim0=1, dim1=2)
         loss_masked = loss_fun(logits, annotations)
@@ -51,10 +53,11 @@ def compute_metrics(p: 'EvalPrediction'):
     }
 
 
-def train_test_re(model_name, train_dataset, validation_dataset, input_size, batch_size, epochs, max_number_pos):
+def train_test_re(model_name, train_dataset, validation_dataset, input_size, batch_size, epochs,
+                  max_number_pos, loss_weights_train, loss_weights_val):
 
     embedding = torch.nn.Embedding(max_number_pos, 768, padding_idx=0)
-    model = ReModel(model_name, input_size, embedding)
+    model = ReModel(model_name, input_size, embedding, loss_weights_train)
 
     # Define training arguments
 
@@ -63,10 +66,11 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
-        learning_rate=5e-5,
+        learning_rate=1e-4,
         optim="adamw_torch",
-        logging_strategy="epoch",
-        save_strategy="epoch",
+        logging_strategy="steps",
+        logging_steps=100,
+        save_strategy="steps",
         logging_dir="./RE/logs",
         logging_first_step=True,
         push_to_hub=False,
@@ -82,17 +86,9 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
         train_dataset=train_dataset,
         compute_metrics=compute_metrics,
     )
-    for batch in trainer.get_eval_dataloader(validation_dataset):
-        break
 
     # Train the model
     trainer.train()
-
-    # training performance
-    results = trainer.evaluate(train_dataset)
-    train_precision = results['eval_precision']
-    train_recall = results['eval_recall']
-    train_f1 = results['eval_f1']
 
     # validation performance
     results = trainer.evaluate(validation_dataset)
@@ -100,14 +96,25 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     val_recall = results['eval_recall']
     val_f1 = results['eval_f1']
 
-    # Return or print the metrics as desired
-    print(f"Train Precision: {train_precision}")
-    print(f"Train Recall: {train_recall}")
-    print(f"Train F1 Score: {train_f1}")
-
-    # Return or print the metrics as desired
     print(f"Validation Precision: {val_precision}")
     print(f"Validation Recall: {val_recall}")
     print(f"Validation F1 Score: {val_f1}")
+
+    # re-train on the whole dataset
+    train_val_dataset = torch.utils.data.ConcatDataset([train_dataset, validation_dataset])
+    n = len(train_val_dataset)
+    train_len = len(train_dataset)
+    val_len = len(validation_dataset)
+    loss_weights_train = loss_weights_train * train_len / n
+    loss_weights_val = loss_weights_val * val_len / n
+    loss_weights = loss_weights_train + loss_weights_val
+    model = ReModel(model_name, input_size, embedding, loss_weights)
+    trainer = RETrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_val_dataset,
+    )
+    # Train the model
+    trainer.train()
 
     return model

@@ -6,40 +6,52 @@ def model_bert(model_name):
     model = BertModel.from_pretrained(model_name)
 
     # freeze bert parameters
-    for param in model.parameters():
-        param.requires_grad = False
+    # for param in model.parameters():
+    #     param.requires_grad = False
 
     return model
 
 
 class ReModel(torch.nn.Module):
 
-    def __init__(self, bert_name, input_size, embedding):
+    def __init__(self, bert_name, input_size, embedding, loss_weights):
         super(ReModel, self).__init__()
 
         self.hidden_size = 768
         self.input_size = input_size
         self.embedding = embedding
+        self.loss_weights = loss_weights
         self.bert = model_bert(bert_name)
 
-        # bert head for RE
-        lstm_hidden_size = 8
+        # Bi-directional LSTM
+        self.dropout = torch.nn.Dropout(0.4)
+        lstm_hidden_size = 128
         self.lstm = torch.nn.LSTM(input_size=self.hidden_size * 5, hidden_size=lstm_hidden_size, num_layers=1,
                                   batch_first=True, bidirectional=True)
 
-        self.lstm_flatten = torch.nn.Flatten()
-        linear_in_size = self.input_size * lstm_hidden_size * 2
-        self.linear = torch.nn.Linear(in_features=linear_in_size, out_features=self.input_size * 5)
+        # Dimensionality reduction layer
+        reduced_size = self.hidden_size // 2
+        self.dim_reduction = torch.nn.Linear(in_features=self.input_size * lstm_hidden_size * 2,
+                                             out_features=reduced_size)
+
+        # Output layer
+        self.final_linear = torch.nn.Linear(in_features=reduced_size, out_features=self.input_size * 5)
+
         self.gelu = torch.nn.GELU()
 
     def __bert_head(self, bert_output, pos, effective_batch_size):
         pos_embedding = self.embedding(pos)
+        bert_output = self.dropout(bert_output)
         lstm_input = torch.concat([bert_output, pos_embedding], dim=-1)
         bilstm_out = self.lstm(lstm_input)[0]
-        flatten_out = self.lstm_flatten(bilstm_out)
-        linear_out = self.linear(flatten_out)
-        logits = self.gelu(linear_out)
+        flatten_out = torch.nn.Flatten()(bilstm_out)
 
+        # Dimensionality reduction without pooling
+        reduced_out = self.dim_reduction(flatten_out)
+
+        # Getting the final logits
+        logits = self.final_linear(reduced_out)
+        logits = self.gelu(logits)
         logits = torch.reshape(logits, shape=(effective_batch_size, self.input_size, 5))
 
         return logits

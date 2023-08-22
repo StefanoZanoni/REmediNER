@@ -45,21 +45,23 @@ def train_re(data_re, epochs, batch_size, input_length):
     val_in_texts_re, val_in_pos_re, test_in_texts_re_final, test_in_pos_re_final, val_out_re, test_out_re_final = \
         split_test_re(val_in_texts_re, val_in_pos_re, val_out_re)
 
-    # train data
+    # training data
     train_re_ids, train_re_masks, train_re_annotations = \
         get_re_inputs(train_in_texts_re, train_out_re, tokenizer_re, input_length)
+    loss_weights_train = torch.tensor(compute_weights(train_re_annotations.numpy()), dtype=torch.float32)
     train_in_pos_re = torch.tensor(train_in_pos_re, dtype=torch.int32)
     train_re_dataset = REDataset(train_re_ids, train_re_masks, train_in_pos_re, train_re_annotations)
 
-    # test data
+    # validation data
     val_re_ids, val_re_masks, val_re_annotations = \
         get_re_inputs(val_in_texts_re, val_out_re, tokenizer_re, input_length)
+    loss_weights_val = torch.tensor(compute_weights(val_re_annotations.numpy()), dtype=torch.float32)
     val_in_pos_re = torch.tensor(val_in_pos_re, dtype=torch.int32)
     val_re_dataset = REDataset(val_re_ids, val_re_masks, val_in_pos_re, val_re_annotations)
 
     # RE training
     re_model = train_test_re(bert_name_re, train_re_dataset, val_re_dataset, input_length,
-                             batch_size, epochs, max_number_pos)
+                             batch_size, epochs, max_number_pos, loss_weights_train, loss_weights_val)
     summary(re_model,
             input_size=[(batch_size, input_length), (batch_size, input_length),
                         (batch_size, input_length), (batch_size, input_length)],
@@ -79,18 +81,19 @@ def train_ner(data, epochs, batch_size, input_length):
     train_in_ner, test_in_ner, train_out_ner, test_out_ner = split_train_test_ner(data)
     val_in_ner, test_in_ner_final, val_out_ner, test_out_ner_final = split_test_ner(test_in_ner, test_out_ner)
 
-    # train data
+    # training data
     tokenized_texts_train_ner, tokenized_labels_train_ner = tokenize_text_ner(train_in_ner, train_out_ner,
                                                                               tokenizer_ner)
     ner_ids, ner_masks, ner_labels = \
         get_ner_inputs(tokenized_texts_train_ner, tokenized_labels_train_ner, tokenizer_ner, label_id, input_length)
-    loss_weights = torch.tensor(compute_weights(ner_labels.numpy()), dtype=torch.float32)
+    loss_weights_train = torch.tensor(compute_weights(ner_labels.numpy()), dtype=torch.float32)
     train_ner_dataset = NERDataset(ner_ids, ner_masks, ner_labels)
 
-    # test data
+    # validation data
     tokenized_texts_val_ner, tokenized_labels_val_ner = tokenize_text_ner(val_in_ner, val_out_ner, tokenizer_ner)
     ner_ids, ner_masks, ner_labels = \
         get_ner_inputs(tokenized_texts_val_ner, tokenized_labels_val_ner, tokenizer_ner, label_id, input_length)
+    loss_weights_val = torch.tensor(compute_weights(ner_labels.numpy()), dtype=torch.float32)
     val_ner_dataset = NERDataset(ner_ids, ner_masks, ner_labels)
 
     # NER training
@@ -99,7 +102,8 @@ def train_ner(data, epochs, batch_size, input_length):
                   'id_label': id_label,
                   'label_id': label_id}
     ner_model = (
-        train_test_ner(bert_model, train_ner_dataset, val_ner_dataset, input_length, batch_size, epochs, loss_weights))
+        train_test_ner(bert_model, train_ner_dataset, val_ner_dataset, input_length, batch_size, epochs,
+                       loss_weights_train, loss_weights_val))
     summary(ner_model,
             input_size=[(batch_size, input_length), (batch_size, input_length)],
             dtypes=['torch.IntTensor', 'torch.IntTensor'])
