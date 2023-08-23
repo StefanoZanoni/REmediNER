@@ -15,32 +15,33 @@ def compute_pos(batch_output_ner):
 
 class FinalModel(torch.nn.Module):
 
-    def __init__(self, ner, re, tokenizer, id_label, gpu_id, re_input_length):
+    def __init__(self, ner, re, tokenizer, id_label, re_input_length):
         super(FinalModel, self).__init__()
 
         self.ner = ner
+        self.re = re
         self.tokenizer = tokenizer
         self.id_label = id_label
-        self.re = re
-        self.gpu_id = gpu_id
         self.re_input_length = re_input_length
 
-    def forward(self, ids, masks):
-        _, entities = self.ner(ids, masks)
-        entities.to('cpu')
+    def forward(self, ids, mask, labels):
+        device = ids.device
+        ner_output = self.ner(ids, mask, None)
+        ner_logits = ner_output['logits']
+        entities = torch.argmax(ner_logits, dim=-1)
+        entities = entities.cpu()
         entities = entities.tolist()
-        ids.to('cpu')
+        ids = ids.cpu()
         ids = ids.tolist()
         output_ner = self.__convert_output_to_masked_text(entities, ids)
-        ids, masks, pos, max_number_pos = self.__prepare_re_inputs(output_ner)
-        embedding = torch.nn.Embedding(max_number_pos, 768, padding_idx=0).to(self.gpu_id)
-        ids.to(self.gpu_id)
-        masks.to(self.gpu_id)
-        pos.to(self.gpu_id)
-        effective_batch_size = len(entities)
-        output_re = self.re(ids, masks, pos, embedding, effective_batch_size)
+        ids, mask, pos = self.__prepare_re_inputs(output_ner)
+        ids = ids.to(device)
+        mask = mask.to(device)
+        pos = pos.to(device)
+        re_output = self.re(ids, mask, pos, labels)
+        re_logits = re_output['logits']
 
-        return output_re
+        return {'logits': re_logits, 'loss': torch.zeros(1)}
 
     def __convert_output_to_masked_text(self, batch_entities, ids):
         new_entities = ['O', 'DRUG', 'EFFECT']
@@ -114,10 +115,10 @@ class FinalModel(torch.nn.Module):
     def __prepare_re_inputs(self, batch_output_ner):
         batch_pos = compute_pos(batch_output_ner)
         batch_tokenized_texts, batch_tokenized_pos = self.__tokenize_inputs_re(batch_output_ner, batch_pos)
-        pos, max_number_pos = self.__compute_pos_indexes(batch_tokenized_pos)
+        pos = self.__compute_pos_indexes(batch_tokenized_pos)
         ids, masks = self.__get_re_inputs(batch_tokenized_texts)
 
-        return ids, masks, pos, max_number_pos
+        return ids, masks, pos
 
     def __get_re_inputs(self, batch_tokenized_texts):
         bert_ids = []
@@ -175,7 +176,7 @@ class FinalModel(torch.nn.Module):
 
         indexes_global = torch.tensor(indexes_global, dtype=torch.long)
 
-        return indexes_global, len(max_number_pos) + 1
+        return indexes_global
 
     def __tokenize_inputs_re(self, batch_texts, batch_pos):
         temp_tokenized_texts = []

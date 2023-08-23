@@ -10,17 +10,21 @@ from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 from torchsummary import summary
 
-from src.FINALMODEL.final_model import FinalModel
-from src.FINALMODEL.testing_final import test_final
 from src.data_utilities import load_data, pre_process_texts
+
 from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
     tokenize_text_ner, get_ner_inputs, prepare_data_for_ner, split_test_ner, compute_weights
-from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_context_mean_length, tokenize_text_re, \
-    split_train_test_re, get_re_inputs, compute_pos_indexes, split_test_re
 from src.NER.train_eval_ner import train_test_ner
 from src.NER.ner_dataset import NERDataset
+
+from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_context_mean_length, tokenize_text_re, \
+    split_train_test_re, get_re_inputs, compute_pos_indexes, split_test_re
 from src.RE.re_dataset import REDataset
 from src.RE.train_eval_re import train_test_re
+
+from src.FINALMODEL.final_model import FinalModel
+from src.FINALMODEL.test_final import test_final
+from src.FINALMODEL.final_dataset import FinalDataset
 
 # bert_name_ner = "d4data/biomedical-ner-all"
 # bert_name_ner = "ukkendane/bert-medical-ner"
@@ -68,11 +72,10 @@ def train_re(data_re, epochs, batch_size, input_length):
             dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor'])
 
     # final test data
-    _, _, val_re_annotations = \
+    _, _, test_re_annotations = \
         get_re_inputs(test_in_texts_re_final, test_out_re_final, tokenizer_re, input_length)
-    outputs_test_re_final = TensorDataset(val_re_annotations)
 
-    return re_model, outputs_test_re_final
+    return re_model, test_re_annotations
 
 
 def train_ner(data, epochs, batch_size, input_length):
@@ -113,9 +116,8 @@ def train_ner(data, epochs, batch_size, input_length):
                                                                             tokenizer_ner)
     ner_ids, ner_masks, _ = \
         get_ner_inputs(tokenized_texts_test_ner, tokenized_labels_test_ner, tokenizer_ner, label_id, input_length)
-    inputs_test_ner_final = TensorDataset(ner_ids, ner_masks)
 
-    return ner_model, inputs_test_ner_final, id_label
+    return ner_model, ner_ids, ner_masks, id_label
 
 
 def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
@@ -148,14 +150,14 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
     # train the model for NER task
-    ner_model, final_inputs, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
+    ner_model, ner_ids, ner_masks, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
 
     # train the model for RE task
-    # re_model, final_outputs = train_re(data_re, epochs, batch_size, re_input_length)
+    re_model, re_annotations = train_re(data_re, epochs, batch_size, re_input_length)
 
-    # build the final model from the union of the NER model and RE model
-    # final_model = FinalModel(ner_model, re_model, tokenizer_ner, id_label, rank, re_input_length)
-    # test_final(final_model, final_inputs, final_outputs, batch_size, world_size, rank)
+    # test the final model
+    final_dataset = FinalDataset(ner_ids, ner_masks, re_annotations)
+    test_final(ner_model, re_model, final_dataset, tokenizer_ner, id_label, re_input_length, batch_size)
 
 
 if __name__ == '__main__':
