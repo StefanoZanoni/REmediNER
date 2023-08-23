@@ -7,9 +7,10 @@ from nltk import TreebankWordTokenizer
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
+np.random.seed(0)
+
 
 def iob_tagging(text, drugs, effects, twt):
-
     # lists of all drugs and effects starting and ending indexes
     ds = []
     es = []

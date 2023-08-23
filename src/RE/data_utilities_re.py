@@ -6,6 +6,8 @@ import pandas as pd
 import spacy
 from sklearn.model_selection import train_test_split
 
+np.random.seed(0)
+
 
 def mask_texts(texts, drugs, effects, concatenation=False):
     annotations = []
