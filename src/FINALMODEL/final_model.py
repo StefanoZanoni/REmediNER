@@ -93,20 +93,19 @@ class FinalModel(torch.nn.Module):
             new_token = ''
             de_append = False
             for i, token in enumerate(tokens):
-                if token.startswith('##'):
-                    new_token += token.replace('##', '')
-                elif token != 'DRUG' and token != 'EFFECT':
-                    if new_token != '':
-                        text.append(new_token)
-                        new_token = token
+                if not token.startswith('##') and new_token != '':
+                    if new_token != 'DRUG' and new_token != 'EFFECT':
+                        text.append(new_token.lower())
                         de_append = False
                     else:
-                        text.append(token)
-                        de_append = False
+                        if not de_append:
+                            text.append(new_token)
+                            de_append = True
+                    new_token = ''
+                if token == 'DRUG' or token == 'EFFECT':
+                    new_token = token
                 else:
-                    if not de_append:
-                        text.append(token)
-                        de_append = True
+                    new_token += token.replace('##', '')
 
             batch_texts.append(' '.join(text))
 
