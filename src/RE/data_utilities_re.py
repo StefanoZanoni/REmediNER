@@ -115,56 +115,27 @@ def prepare_data_for_re(data):
     return data_re
 
 
-def compute_context_mean_length(data):
-    function_word = ['AUX', 'CONJ', 'CCONJ', 'INTJ', 'PUNCT', 'SCONJ', 'X', 'SPACE']
-    context_length = 0
-
-    for index, row in data.iterrows():
-        context_pos = row['pos_tags']
-        context_pos = [pos for pos in context_pos if pos not in function_word]
-        context_length += len(context_pos)
-
-    return int(np.ceil(context_length / len(data)))
-
-
-def compute_pos(data):
-    nlp = spacy.load("en_core_web_sm")
-    pos_tags = []
-    for text in data['masked_text']:
-        doc = nlp(text)
-        pos = [token.pos_ for token in doc]
-        pos_tags.append(pos)
-
-    data['pos_tags'] = pos_tags
-
-
 def tokenize_text_re(data, tokenizer):
     texts = data['masked_text'].to_list()
     texts_annotations = data['annotated_text'].to_list()
-    pos_tags = data['pos_tags'].to_list()
 
     temp_tokenized_texts = []
     temp_tokenized_annotations = []
-    temp_tokenized_tags = []
 
-    for text, annotations, pos in zip(texts, texts_annotations, pos_tags):
+    for text, annotations in zip(texts, texts_annotations):
         tokenized_text = []
         tokenized_annotation = []
-        tokenized_pos = []
-        for word, annotation, pos_tag in zip(text.split(), annotations, pos):
+        for word, annotation in zip(text.split(), annotations):
             tokenized_word = tokenizer.tokenize(word)
             n_subwords = len(tokenized_word)
             tokenized_text.append(tokenized_word)
             tokenized_annotation.append([annotation] * n_subwords)
-            tokenized_pos.append([pos_tag] * n_subwords)
 
         temp_tokenized_texts.append(tokenized_text)
         temp_tokenized_annotations.append(tokenized_annotation)
-        temp_tokenized_tags.append(tokenized_pos)
 
     tokenized_texts = []
     tokenized_annotations = []
-    tokenized_pos = []
 
     for text in temp_tokenized_texts:
         tokenized_text = []
@@ -180,60 +151,22 @@ def tokenize_text_re(data, tokenizer):
                 tokenized_annotation.append(token)
         tokenized_annotations.append(tokenized_annotation)
 
-    for pos_tags in temp_tokenized_tags:
-        tokenized_tag = []
-        for pos_tag in pos_tags:
-            for token in pos_tag:
-                tokenized_tag.append(token)
-        tokenized_pos.append(tokenized_tag)
-
-    return tokenized_texts, tokenized_annotations, tokenized_pos
+    return tokenized_texts, tokenized_annotations
 
 
-def split_train_test_re(tokenized_texts, tokenized_pos, output):
-    input = []
-    for i in range(len(tokenized_texts)):
-        input.append((tokenized_texts[i], tokenized_pos[i]))
-    train_in, test_in, train_out, test_out = train_test_split(input, output,
+def split_train_test_re(tokenized_texts, output):
+    train_in, test_in, train_out, test_out = train_test_split(tokenized_texts, output,
                                                               test_size=0.2, shuffle=True, random_state=0)
 
-    train_in_texts = []
-    train_in_pos = []
-    for el in train_in:
-        train_in_texts.append(el[0])
-        train_in_pos.append(el[1])
-
-    test_in_texts = []
-    test_in_pos = []
-    for el in test_in:
-        test_in_texts.append(el[0])
-        test_in_pos.append(el[1])
-
-    return train_in_texts, train_in_pos, test_in_texts, test_in_pos, train_out, test_out
+    return train_in, test_in, train_out, test_out
 
 
-def split_test_re(texts_input, pos_input, output):
-    input = []
-    for i in range(len(texts_input)):
-        input.append((texts_input[i], pos_input[i]))
-    test_in_re, test_in_re_final, test_out_re, test_out_re_final = train_test_split(input, output,
+def split_test_re(texts_input, output):
+    test_in_re, test_in_re_final, test_out_re, test_out_re_final = train_test_split(texts_input, output,
                                                                                     test_size=0.5, shuffle=True,
                                                                                     random_state=0)
 
-    test_in_re_texts = []
-    test_in_re_pos = []
-    for el in test_in_re:
-        test_in_re_texts.append(el[0])
-        test_in_re_pos.append(el[1])
-
-    test_in_re_texts_final = []
-    test_in_re_pos_final = []
-    for el in test_in_re_final:
-        test_in_re_texts_final.append(el[0])
-        test_in_re_pos_final.append(el[1])
-
-    return test_in_re_texts, test_in_re_pos, test_in_re_texts_final, test_in_re_pos_final, \
-        test_out_re, test_out_re_final
+    return test_in_re, test_in_re_final, test_out_re, test_out_re_final
 
 
 def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
@@ -269,33 +202,3 @@ def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
     re_annotations = torch.tensor(bert_annotations, dtype=torch.long)
 
     return re_ids, re_masks, re_annotations
-
-
-def compute_pos_indexes(tokenized_pos, input_length):
-    # compute pos indexes
-    max_number_pos = set()
-    for l in tokenized_pos:
-        for pos in l:
-            max_number_pos.add(pos)
-
-    pos_indexes = {pos: i for i, pos in enumerate(max_number_pos, start=1)}
-
-    indexes_global = []
-    for l in tokenized_pos:
-        indexes_local = [0]
-        # CLS
-        for pos in l:
-            indexes_local.append(pos_indexes[pos])
-        # SEP
-        indexes_local.append(0)
-        # padding
-        if len(indexes_local) < input_length:
-            for i in range(input_length - len(indexes_local)):
-                indexes_local.append(0)
-        # truncation
-        if len(indexes_local) > input_length:
-            indexes_local = indexes_local[:input_length]
-
-        indexes_global.append(indexes_local)
-
-    return indexes_global, len(max_number_pos) + 1

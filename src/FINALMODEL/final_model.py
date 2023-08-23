@@ -2,17 +2,6 @@ import spacy
 import torch
 
 
-def compute_pos(batch_output_ner):
-    nlp = spacy.load("en_core_web_sm")
-    batch_pos = []
-    for text in batch_output_ner:
-        doc = nlp(text)
-        pos = [token.pos_ for token in doc]
-        batch_pos.append(pos)
-
-    return batch_pos
-
-
 class FinalModel(torch.nn.Module):
 
     def __init__(self, ner, re, tokenizer, id_label, re_input_length):
@@ -34,11 +23,10 @@ class FinalModel(torch.nn.Module):
         ids = ids.cpu()
         ids = ids.tolist()
         output_ner = self.__convert_output_to_masked_text(entities, ids)
-        ids, mask, pos = self.__prepare_re_inputs(output_ner)
+        ids, mask = self.__prepare_re_inputs(output_ner)
         ids = ids.to(device)
         mask = mask.to(device)
-        pos = pos.to(device)
-        re_output = self.re(ids, mask, pos, labels)
+        re_output = self.re(ids, mask, labels)
         re_logits = re_output['logits']
 
         return {'logits': re_logits, 'loss': torch.zeros(1)}
@@ -112,12 +100,10 @@ class FinalModel(torch.nn.Module):
         return batch_texts
 
     def __prepare_re_inputs(self, batch_output_ner):
-        batch_pos = compute_pos(batch_output_ner)
-        batch_tokenized_texts, batch_tokenized_pos = self.__tokenize_inputs_re(batch_output_ner, batch_pos)
-        pos = self.__compute_pos_indexes(batch_tokenized_pos)
+        batch_tokenized_texts = self.__tokenize_inputs_re(batch_output_ner)
         ids, masks = self.__get_re_inputs(batch_tokenized_texts)
 
-        return ids, masks, pos
+        return ids, masks
 
     def __get_re_inputs(self, batch_tokenized_texts):
         bert_ids = []
@@ -145,56 +131,19 @@ class FinalModel(torch.nn.Module):
 
         return re_ids, re_masks
 
-    def __compute_pos_indexes(self, batch_tokenized_pos):
-        input_length = self.re_input_length
-
-        max_number_pos = set()
-        for l in batch_tokenized_pos:
-            for pos in l:
-                max_number_pos.add(pos)
-
-        pos_indexes = {pos: i for i, pos in enumerate(max_number_pos, start=1)}
-
-        indexes_global = []
-        for l in batch_tokenized_pos:
-            indexes_local = [0]
-            # CLS
-            for pos in l:
-                indexes_local.append(pos_indexes[pos])
-            # SEP
-            indexes_local.append(0)
-            # padding
-            if len(indexes_local) < input_length:
-                for i in range(input_length - len(indexes_local)):
-                    indexes_local.append(0)
-            # truncation
-            if len(indexes_local) > input_length:
-                indexes_local = indexes_local[:input_length]
-
-            indexes_global.append(indexes_local)
-
-        indexes_global = torch.tensor(indexes_global, dtype=torch.long)
-
-        return indexes_global
-
-    def __tokenize_inputs_re(self, batch_texts, batch_pos):
+    def __tokenize_inputs_re(self, batch_texts):
         temp_tokenized_texts = []
-        temp_tokenized_tags = []
 
-        for text, pos in zip(batch_texts, batch_pos):
+        for text in batch_texts:
             tokenized_text = []
-            tokenized_pos = []
-            for word, pos_tag in zip(text.split(), pos):
+            for word in text.split():
                 tokenized_word = self.tokenizer.tokenize(word)
                 n_subwords = len(tokenized_word)
                 tokenized_text.append(tokenized_word)
-                tokenized_pos.append([pos_tag] * n_subwords)
 
             temp_tokenized_texts.append(tokenized_text)
-            temp_tokenized_tags.append(tokenized_pos)
 
         tokenized_texts = []
-        tokenized_pos = []
 
         for text in temp_tokenized_texts:
             tokenized_text = []
@@ -203,11 +152,4 @@ class FinalModel(torch.nn.Module):
                     tokenized_text.append(token)
             tokenized_texts.append(tokenized_text)
 
-        for pos_tags in temp_tokenized_tags:
-            tokenized_tag = []
-            for pos_tag in pos_tags:
-                for token in pos_tag:
-                    tokenized_tag.append(token)
-            tokenized_pos.append(tokenized_tag)
-
-        return tokenized_texts, tokenized_pos
+        return tokenized_texts

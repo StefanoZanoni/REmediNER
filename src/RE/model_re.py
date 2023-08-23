@@ -14,19 +14,18 @@ def model_bert(model_name):
 
 class ReModel(torch.nn.Module):
 
-    def __init__(self, bert_name, input_size, embedding, loss_weights):
+    def __init__(self, bert_name, input_size, loss_weights):
         super(ReModel, self).__init__()
 
         self.hidden_size = 768
         self.input_size = input_size
-        self.embedding = embedding
         self.loss_weights = loss_weights
         self.bert = model_bert(bert_name)
 
         # Bi-directional LSTM
         self.dropout = torch.nn.Dropout(0.4)
         lstm_hidden_size = 128
-        self.lstm = torch.nn.LSTM(input_size=self.hidden_size * 5, hidden_size=lstm_hidden_size, num_layers=1,
+        self.lstm = torch.nn.LSTM(input_size=self.hidden_size * 4, hidden_size=lstm_hidden_size, num_layers=1,
                                   batch_first=True, bidirectional=True)
 
         # Dimensionality reduction layer
@@ -39,11 +38,9 @@ class ReModel(torch.nn.Module):
 
         self.gelu = torch.nn.GELU()
 
-    def __bert_head(self, bert_output, pos, effective_batch_size):
-        pos_embedding = self.embedding(pos)
+    def __bert_head(self, bert_output, effective_batch_size):
         bert_output = self.dropout(bert_output)
-        lstm_input = torch.concat([bert_output, pos_embedding], dim=-1)
-        bilstm_out = self.lstm(lstm_input)[0]
+        bilstm_out = self.lstm(bert_output)[0]
         flatten_out = torch.nn.Flatten()(bilstm_out)
 
         # Dimensionality reduction without pooling
@@ -56,7 +53,7 @@ class ReModel(torch.nn.Module):
 
         return logits
 
-    def forward(self, ids, mask, pos, labels):
+    def forward(self, ids, mask, labels):
         bert_output = self.bert(ids, attention_mask=mask, return_dict=False, output_hidden_states=True)
 
         # concatenate the last four hidden states
@@ -67,6 +64,6 @@ class ReModel(torch.nn.Module):
         bert_output = torch.concat(bert_output, dim=-1)
         effective_batch_size = list(labels.size())[0]
 
-        logits = self.__bert_head(bert_output, pos, effective_batch_size)
+        logits = self.__bert_head(bert_output, effective_batch_size)
 
         return {'logits': logits}

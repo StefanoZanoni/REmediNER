@@ -17,8 +17,8 @@ from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_t
 from src.NER.train_eval_ner import train_test_ner
 from src.NER.ner_dataset import NERDataset
 
-from src.RE.data_utilities_re import prepare_data_for_re, compute_pos, compute_context_mean_length, tokenize_text_re, \
-    split_train_test_re, get_re_inputs, compute_pos_indexes, split_test_re
+from src.RE.data_utilities_re import prepare_data_for_re, tokenize_text_re, split_train_test_re, \
+                                      get_re_inputs, split_test_re
 from src.RE.re_dataset import REDataset
 from src.RE.train_eval_re import train_test_re
 
@@ -42,30 +42,27 @@ transformers.utils.logging.set_verbosity_error()
 
 def train_re(data_re, epochs, batch_size, input_length):
     # RE data
-    tokenized_texts, tokenized_annotation, tokenized_pos = tokenize_text_re(data_re, tokenizer_re)
-    pos_indexes, max_number_pos = compute_pos_indexes(tokenized_pos, input_length)
-    train_in_texts_re, train_in_pos_re, val_in_texts_re, val_in_pos_re, \
-        train_out_re, val_out_re = split_train_test_re(tokenized_texts, pos_indexes, tokenized_annotation)
-    val_in_texts_re, val_in_pos_re, test_in_texts_re_final, test_in_pos_re_final, val_out_re, test_out_re_final = \
-        split_test_re(val_in_texts_re, val_in_pos_re, val_out_re)
+    tokenized_texts, tokenized_annotation = tokenize_text_re(data_re, tokenizer_re)
+    train_in_texts_re, val_in_texts_re, train_out_re, val_out_re = \
+        split_train_test_re(tokenized_texts, tokenized_annotation)
+    val_in_texts_re, test_in_texts_re_final, val_out_re, test_out_re_final = \
+        split_test_re(val_in_texts_re, val_out_re)
 
     # training data
     train_re_ids, train_re_masks, train_re_annotations = \
         get_re_inputs(train_in_texts_re, train_out_re, tokenizer_re, input_length)
     loss_weights_train = torch.tensor(compute_weights(train_re_annotations.numpy()), dtype=torch.float32)
-    train_in_pos_re = torch.tensor(train_in_pos_re, dtype=torch.int32)
-    train_re_dataset = REDataset(train_re_ids, train_re_masks, train_in_pos_re, train_re_annotations)
+    train_re_dataset = REDataset(train_re_ids, train_re_masks, train_re_annotations)
 
     # validation data
     val_re_ids, val_re_masks, val_re_annotations = \
         get_re_inputs(val_in_texts_re, val_out_re, tokenizer_re, input_length)
     loss_weights_val = torch.tensor(compute_weights(val_re_annotations.numpy()), dtype=torch.float32)
-    val_in_pos_re = torch.tensor(val_in_pos_re, dtype=torch.int32)
-    val_re_dataset = REDataset(val_re_ids, val_re_masks, val_in_pos_re, val_re_annotations)
+    val_re_dataset = REDataset(val_re_ids, val_re_masks, val_re_annotations)
 
     # RE training
     re_model = train_test_re(bert_name_re, train_re_dataset, val_re_dataset, input_length,
-                             batch_size, epochs, max_number_pos, loss_weights_train, loss_weights_val)
+                             batch_size, epochs, loss_weights_train, loss_weights_val)
     summary(re_model,
             input_size=[(batch_size, input_length), (batch_size, input_length),
                         (batch_size, input_length), (batch_size, input_length)],
@@ -143,7 +140,6 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
         data_re = load_data()
         pre_process_texts(data_re)
         data_re = prepare_data_for_re(data_re)
-        compute_pos(data_re)
         data_re.to_csv("../data/re.csv", index=False)
     # read already pre-processed data for RE task
     else:

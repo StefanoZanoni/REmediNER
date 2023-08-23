@@ -51,10 +51,9 @@ def compute_metrics(p: 'EvalPrediction'):
 
 
 def train_test_re(model_name, train_dataset, validation_dataset, input_size, batch_size, epochs,
-                  max_number_pos, loss_weights_train, loss_weights_val):
+                  loss_weights_train, loss_weights_val):
 
-    embedding = torch.nn.Embedding(max_number_pos, 768, padding_idx=0)
-    model = ReModel(model_name, input_size, embedding, loss_weights_train)
+    model = ReModel(model_name, input_size, loss_weights_train)
 
     # Define training arguments
 
@@ -105,7 +104,7 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     loss_weights_train = loss_weights_train * train_len / n
     loss_weights_val = loss_weights_val * val_len / n
     loss_weights = loss_weights_train + loss_weights_val
-    model = ReModel(model_name, input_size, embedding, loss_weights)
+    model = ReModel(model_name, input_size, loss_weights)
     trainer = RETrainer(
         model=model,
         args=training_args,
