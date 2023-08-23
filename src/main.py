@@ -26,13 +26,8 @@ from src.FINALMODEL.final_model import FinalModel
 from src.FINALMODEL.test_final import test_final
 from src.FINALMODEL.final_dataset import FinalDataset
 
-# bert_name_ner = "d4data/biomedical-ner-all"
-# bert_name_ner = "ukkendane/bert-medical-ner"
-# bert_name_ner = 'emilyalsentzer/Bio_ClinicalBERT'
-# bert_name_ner = "bert-base-uncased"
-bert_name_ner = "bert-base-cased"
-# bert_name_ner = "bert-large-uncased"
-# bert_name_ner = "bert-large-cased"
+
+bert_name_ner = 'bert-base-cased'
 bert_name_re = 'bert-base-cased'
 tokenizer_ner = BertTokenizerFast.from_pretrained(bert_name_ner)
 tokenizer_re = BertTokenizerFast.from_pretrained(bert_name_re)
