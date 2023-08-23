@@ -1,4 +1,3 @@
-import logging
 import torch
 
 from transformers import Trainer, TrainingArguments

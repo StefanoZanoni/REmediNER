@@ -1,13 +1,10 @@
-import logging
 import torch
 
 from transformers import Trainer, TrainingArguments
 from src.RE.model_re import ReModel
 
-from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
+from sklearn.metrics import f1_score, precision_score, recall_score
 import numpy as np
-
-from src.plot import plot_heat_map
 
 
 class RETrainer(Trainer):
