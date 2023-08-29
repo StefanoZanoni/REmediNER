@@ -29,7 +29,7 @@ class FinalModel(torch.nn.Module):
         re_output = self.re(ids, mask, labels)
         re_logits = re_output['logits']
 
-        return {'logits': re_logits, 'loss': torch.zeros(1)}
+        return {'logits': re_logits, 'loss': torch.zeros(1).to(device)}
 
     def __convert_output_to_masked_text(self, batch_entities, ids):
         new_entities = ['O', 'DRUG', 'EFFECT']
