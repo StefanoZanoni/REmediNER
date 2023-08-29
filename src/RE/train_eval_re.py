@@ -62,6 +62,7 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
+        gradient_accumulation_steps=4,
         learning_rate=2e-4,
         optim="adamw_torch",
         logging_strategy="steps",
