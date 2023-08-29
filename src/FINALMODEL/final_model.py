@@ -95,6 +95,8 @@ class FinalModel(torch.nn.Module):
                 else:
                     new_token += token.replace('##', '')
 
+            text.append(new_token)
+
             batch_texts.append(' '.join(text))
 
         return batch_texts
