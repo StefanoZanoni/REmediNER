@@ -35,22 +35,20 @@ def compute_metrics(p: 'EvalPrediction'):
 
     # Filter out any labels with value -100, since these should be ignored
     mask = labels_flat != -100
-    preds_flat = preds_flat[mask]
-    labels_flat = labels_flat[mask]
+    preds_flat = preds_flat[mask].tolist()
+    labels_flat = labels_flat[mask].tolist()
 
     # Compute the metrics
     precision = precision_score(labels_flat, preds_flat, average='macro')
     recall = recall_score(labels_flat, preds_flat, average='macro')
     f1 = f1_score(labels_flat, preds_flat, average='macro')
-    conf_matrix = confusion_matrix(labels_flat, preds_flat, normalize='true')
+    conf_matrix = confusion_matrix(labels_flat, preds_flat, normalize='true').tolist()
 
     return {
         'precision': precision,
         'recall': recall,
         'f1': f1,
-        'confusion_matrix': conf_matrix.tolist(),
-        'predictions': preds_flat,
-        'true_labels': labels_flat
+        'confusion_matrix': conf_matrix,
     }
 
 
@@ -62,7 +60,6 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     model = NerModel(model_name, input_size, id_label, label_id, loss_weights_train)
 
     # Define training arguments
-
     training_args = TrainingArguments(
         output_dir="./NER/results",
         num_train_epochs=epochs,
@@ -82,7 +79,6 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     )
 
     # Initialize the Trainer
-
     trainer = NERTrainer(
         model=model,
         args=training_args,
@@ -107,7 +103,6 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
 
     # re-train on the whole dataset
     train_val_dataset = torch.utils.data.ConcatDataset([train_dataset, validation_dataset])
-    train_val_dataset = torch.utils.data.ConcatDataset([train_dataset, validation_dataset])
     n = len(train_val_dataset)
     train_len = len(train_dataset)
     val_len = len(validation_dataset)
@@ -121,7 +116,7 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         gradient_accumulation_steps=4,
-        learning_rate=2e-4,
+        learning_rate=1e-5,
         optim="adamw_torch",
         logging_strategy="steps",
         logging_steps=100,

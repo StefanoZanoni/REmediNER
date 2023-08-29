@@ -33,8 +33,8 @@ def compute_metrics(p: 'EvalPrediction'):
 
     # Filter out any labels with value -100, since these should be ignored
     mask = labels_flat != -100
-    preds_flat = preds_flat[mask]
-    labels_flat = labels_flat[mask]
+    preds_flat = preds_flat[mask].tolist()
+    labels_flat = labels_flat[mask].tolist()
 
     # Compute the metrics
     precision = precision_score(labels_flat, preds_flat, average='macro')
@@ -45,8 +45,6 @@ def compute_metrics(p: 'EvalPrediction'):
         'precision': precision,
         'recall': recall,
         'f1': f1,
-        'predictions': preds_flat,
-        'true_labels': labels_flat
     }
 
 
@@ -56,7 +54,6 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     model = ReModel(model_name, input_size, loss_weights_train)
 
     # Define training arguments
-
     training_args = TrainingArguments(
         output_dir="./RE/results",
         num_train_epochs=epochs,
@@ -76,7 +73,6 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     )
 
     # Initialize the Trainer
-
     trainer = RETrainer(
         model=model,
         args=training_args,
@@ -112,7 +108,7 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         gradient_accumulation_steps=4,
-        learning_rate=2e-4,
+        learning_rate=1e-5,
         optim="adamw_torch",
         logging_strategy="steps",
         logging_steps=100,
