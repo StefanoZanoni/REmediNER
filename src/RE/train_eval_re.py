@@ -1,3 +1,4 @@
+import os
 import torch
 
 from transformers import Trainer, TrainingArguments
@@ -52,6 +53,9 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
                   loss_weights_train, loss_weights_val):
 
     model = ReModel(model_name, input_size, loss_weights_train)
+    if os.path.exists('./RE/model'):
+        model.load_state_dict(torch.load('./RE/model'))
+        return model
 
     # Define training arguments
     training_args = TrainingArguments(

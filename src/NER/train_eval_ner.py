@@ -1,3 +1,4 @@
+import os
 import torch
 
 from transformers import Trainer, TrainingArguments
@@ -54,10 +55,14 @@ def compute_metrics(p: 'EvalPrediction'):
 
 def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, batch_size, epochs,
                    loss_weights_train, loss_weights_val):
+
     model_name = bert_model['bert_model']
     id_label = bert_model['id_label']
     label_id = bert_model['label_id']
     model = NerModel(model_name, input_size, id_label, label_id, loss_weights_train)
+    if os.path.exists('./NER/model'):
+        model.load_state_dict(torch.load('./NER/model'))
+        return model
 
     # Define training arguments
     training_args = TrainingArguments(

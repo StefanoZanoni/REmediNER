@@ -40,6 +40,7 @@ def test_final(ner_model, re_model, test_dataset, tokenizer_ner, id_label, re_in
     )
 
     trainer = Trainer(
+        args=training_args,
         model=model,
         compute_metrics=compute_metrics,
     )
