@@ -60,9 +60,8 @@ def train_re(data, epochs, batch_size, input_length, train_indices, val_indices,
     re_model = train_test_re(bert_name_re, train_re_dataset, val_re_dataset, input_length,
                              batch_size, epochs, loss_weights_train, loss_weights_val)
     summary(re_model,
-            input_size=[(batch_size, input_length), (batch_size, input_length),
-                        (batch_size, input_length), (batch_size, input_length)],
-            dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor'])
+            input_size=[(batch_size, input_length), (batch_size, input_length), (batch_size, input_length)],
+            dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor'])
 
     # final test data
     _, _, test_re_annotations = \
@@ -108,8 +107,8 @@ def train_ner(data, epochs, batch_size, input_length, train_indices, val_indices
         train_test_ner(bert_model, train_ner_dataset, val_ner_dataset, input_length, batch_size, epochs,
                        loss_weights_train, loss_weights_val))
     summary(ner_model,
-            input_size=[(batch_size, input_length), (batch_size, input_length)],
-            dtypes=['torch.IntTensor', 'torch.IntTensor'])
+            input_size=[(batch_size, input_length), (batch_size, input_length), (batch_size, input_length)],
+            dtypes=['torch.IntTensor', 'torch.IntTensor', 'torch.IntTensor'])
 
     # final test data
     tokenized_texts_test_ner, tokenized_labels_test_ner = tokenize_text_ner(test_in_ner_final, test_out_ner_final,
