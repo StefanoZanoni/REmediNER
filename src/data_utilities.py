@@ -2,16 +2,30 @@ import ast
 import pandas as pd
 
 from datasets import load_dataset
+from sklearn.model_selection import train_test_split
 
 
 def load_data():
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
+    dataframe = dataframe[:100]
     dataframe.drop(columns=['indexes'], inplace=True)
-    dataframe.drop_duplicates(inplace=True, ignore_index=True)  # Drop duplicates
+    dataframe.drop_duplicates(inplace=True, ignore_index=True)
     dataframe.dropna(inplace=True)
 
     return dataframe
+
+
+def split_train_test(indices):
+    train_indices, test_indices = train_test_split(indices, test_size=0.2, random_state=0)
+
+    return train_indices, test_indices
+
+
+def split_test(indices):
+    val_indices, test_indices = train_test_split(indices, test_size=0.5, random_state=0)
+
+    return val_indices, test_indices
 
 
 # dropping sentences with overlapping name in DRUG and EFFECT.

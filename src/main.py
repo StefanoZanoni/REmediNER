@@ -2,6 +2,7 @@ import sys
 import os
 from ast import literal_eval
 
+import numpy as np
 import pandas as pd
 import torch
 import torch.multiprocessing as mp
@@ -10,15 +11,14 @@ from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 from torchsummary import summary
 
-from src.data_utilities import load_data, pre_process_texts
+from src.data_utilities import load_data, pre_process_texts, split_train_test, split_test
 
-from src.NER.data_utilities_ner import compute_iob, get_labels_id, split_train_test_ner, \
-    tokenize_text_ner, get_ner_inputs, prepare_data_for_ner, split_test_ner, compute_weights
+from src.NER.data_utilities_ner import (compute_iob, get_labels_id, tokenize_text_ner,
+                                        get_ner_inputs, prepare_data_for_ner, compute_weights)
 from src.NER.train_eval_ner import train_test_ner
 from src.NER.ner_dataset import NERDataset
 
-from src.RE.data_utilities_re import prepare_data_for_re, tokenize_text_re, split_train_test_re, \
-                                      get_re_inputs, split_test_re
+from src.RE.data_utilities_re import prepare_data_for_re, tokenize_text_re, get_re_inputs
 from src.RE.re_dataset import REDataset
 from src.RE.train_eval_re import train_test_re
 
@@ -35,23 +35,24 @@ tokenizer_re = BertTokenizerFast.from_pretrained(bert_name_re)
 transformers.utils.logging.set_verbosity_error()
 
 
-def train_re(data_re, epochs, batch_size, input_length):
+def train_re(data, epochs, batch_size, input_length, train_indices, val_indices, test_indices):
     # RE data
-    tokenized_texts, tokenized_annotation = tokenize_text_re(data_re, tokenizer_re)
-    train_in_texts_re, val_in_texts_re, train_out_re, val_out_re = \
-        split_train_test_re(tokenized_texts, tokenized_annotation)
-    val_in_texts_re, test_in_texts_re_final, val_out_re, test_out_re_final = \
-        split_test_re(val_in_texts_re, val_out_re)
+    train_data = data.iloc[train_indices]
+    val_data = data.iloc[val_indices]
+    test_data = data.iloc[test_indices]
+    train_in_re, train_out_re = tokenize_text_re(train_data, tokenizer_re)
+    val_in_re, val_out_re = tokenize_text_re(val_data, tokenizer_re)
+    test_in_re_final, test_out_re_final = tokenize_text_re(test_data, tokenizer_re)
 
     # training data
     train_re_ids, train_re_masks, train_re_annotations = \
-        get_re_inputs(train_in_texts_re, train_out_re, tokenizer_re, input_length)
+        get_re_inputs(train_in_re, train_out_re, tokenizer_re, input_length)
     loss_weights_train = torch.tensor(compute_weights(train_re_annotations.numpy()), dtype=torch.float32)
     train_re_dataset = REDataset(train_re_ids, train_re_masks, train_re_annotations)
 
     # validation data
     val_re_ids, val_re_masks, val_re_annotations = \
-        get_re_inputs(val_in_texts_re, val_out_re, tokenizer_re, input_length)
+        get_re_inputs(val_in_re, val_out_re, tokenizer_re, input_length)
     loss_weights_val = torch.tensor(compute_weights(val_re_annotations.numpy()), dtype=torch.float32)
     val_re_dataset = REDataset(val_re_ids, val_re_masks, val_re_annotations)
 
@@ -65,16 +66,23 @@ def train_re(data_re, epochs, batch_size, input_length):
 
     # final test data
     _, _, test_re_annotations = \
-        get_re_inputs(test_in_texts_re_final, test_out_re_final, tokenizer_re, input_length)
+        get_re_inputs(test_in_re_final, test_out_re_final, tokenizer_re, input_length)
 
     return re_model, test_re_annotations
 
 
-def train_ner(data, epochs, batch_size, input_length):
+def train_ner(data, epochs, batch_size, input_length, train_indices, val_indices, test_indices):
     # NER data
     id_label, label_id, len_labels = get_labels_id()
-    train_in_ner, test_in_ner, train_out_ner, test_out_ner = split_train_test_ner(data)
-    val_in_ner, test_in_ner_final, val_out_ner, test_out_ner_final = split_test_ner(test_in_ner, test_out_ner)
+    train_data = data.iloc[train_indices]
+    val_data = data.iloc[val_indices]
+    test_data = data.iloc[test_indices]
+    train_in_ner = train_data['text'].to_frame()
+    train_out_ner = train_data['iob'].to_frame()
+    val_in_ner = val_data['text'].to_frame()
+    val_out_ner = val_data['iob'].to_frame()
+    test_in_ner_final = test_data['text'].to_frame()
+    test_out_ner_final = test_data['iob'].to_frame()
 
     # training data
     tokenized_texts_train_ner, tokenized_labels_train_ner = tokenize_text_ner(train_in_ner, train_out_ner,
@@ -140,11 +148,17 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
     else:
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
+    indices = np.arange(len(data_ner))
+    train_indices, test_indices = split_train_test(indices)
+    val_indices, test_indices = split_test(test_indices)
+
     # train the model for NER task
-    ner_model, ner_ids, ner_masks, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length)
+    ner_model, ner_ids, ner_masks, id_label = train_ner(data_ner, epochs, batch_size, ner_input_length,
+                                                        train_indices, val_indices, test_indices)
 
     # train the model for RE task
-    re_model, re_annotations = train_re(data_re, epochs, batch_size, re_input_length)
+    re_model, re_annotations = train_re(data_re, epochs, batch_size, re_input_length,
+                                        train_indices, val_indices, test_indices)
 
     # test the final model
     final_dataset = FinalDataset(ner_ids, ner_masks, re_annotations)

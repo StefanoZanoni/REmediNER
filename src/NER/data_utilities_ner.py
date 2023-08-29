@@ -7,8 +7,6 @@ from nltk import TreebankWordTokenizer
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
-np.random.seed(0)
-
 
 def iob_tagging(text, drugs, effects, twt):
     # lists of all drugs and effects starting and ending indexes
@@ -83,24 +81,6 @@ def get_labels_id():
     id_label = {0: 'O', 1: 'B-Drug', 2: 'I-Drug', 3: 'B-Effect', 4: 'I-Effect'}
 
     return id_label, label_id, 5
-
-
-def split_train_test_ner(data):
-    input = data['text'].to_frame()
-    output = data['iob'].to_frame()
-    train_in, test_in, train_out, test_out = \
-        train_test_split(input, output, test_size=0.2, shuffle=True, random_state=0)
-
-    return train_in, test_in, train_out, test_out
-
-
-# this function is used to split the test data into test data for NER model testing
-# and test data for FINAL model testing
-def split_test_ner(input, output):
-    test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final = \
-        train_test_split(input, output, test_size=0.5, shuffle=True, random_state=0)
-
-    return test_in_ner, test_in_ner_final, test_out_ner, test_out_ner_final
 
 
 # this function is used to tokenize the text according to the bert tokenizer
@@ -209,6 +189,7 @@ def convert_to_list(column, name):
 # This function is used to compute data augmentation for NER task.
 # Multiple texts will be concatenated to obtain texts with multiple drugs and effects.
 def prepare_data_for_ner(data):
+    np.random.seed(0)
     new_data = copy.copy(data)
     convert_to_list(new_data['drug'].to_frame(), 'drug')
     convert_to_list(new_data['effect'].to_frame(), 'effect')

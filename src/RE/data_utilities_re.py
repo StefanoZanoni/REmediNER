@@ -6,8 +6,6 @@ import pandas as pd
 import spacy
 from sklearn.model_selection import train_test_split
 
-np.random.seed(0)
-
 
 def mask_texts(texts, drugs, effects, concatenation=False):
     annotations = []
@@ -110,6 +108,7 @@ def prepare_data_for_re(data):
     data_re['annotated_text'] = annotation
 
     initial_size = len(data)
+    np.random.seed(0)
     add_concatenation(data, data_re, initial_size, 2)
     add_concatenation(data, data_re, initial_size, 3)
     add_concatenation(data, data_re, initial_size, 4)
@@ -154,21 +153,6 @@ def tokenize_text_re(data, tokenizer):
         tokenized_annotations.append(tokenized_annotation)
 
     return tokenized_texts, tokenized_annotations
-
-
-def split_train_test_re(tokenized_texts, output):
-    train_in, test_in, train_out, test_out = train_test_split(tokenized_texts, output,
-                                                              test_size=0.2, shuffle=True, random_state=0)
-
-    return train_in, test_in, train_out, test_out
-
-
-def split_test_re(texts_input, output):
-    test_in_re, test_in_re_final, test_out_re, test_out_re_final = train_test_split(texts_input, output,
-                                                                                    test_size=0.5, shuffle=True,
-                                                                                    random_state=0)
-
-    return test_in_re, test_in_re_final, test_out_re, test_out_re_final
 
 
 def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
