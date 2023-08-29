@@ -205,7 +205,12 @@ def prepare_data_for_ner(data):
             concatenated_drugs, concatenated_effects = concatenate_drugs_effects(drugs, effects, concat_number)
             new_data.loc[len(new_data)] = [concatenated_text, concatenated_drugs, concatenated_effects]
 
+    new_data['text'] = new_data['text'].apply(remove_double_spaces)
     return new_data
+
+
+def remove_double_spaces(text):
+    return ' '.join(text.split())
 
 
 def get_missed_class(classes):

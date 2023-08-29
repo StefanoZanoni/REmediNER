@@ -113,7 +113,12 @@ def prepare_data_for_re(data):
     add_concatenation(data, data_re, initial_size, 3)
     add_concatenation(data, data_re, initial_size, 4)
 
+    data_re['masked_text'] = data_re['masked_text'].apply(remove_double_spaces)
     return data_re
+
+
+def remove_double_spaces(text):
+    return ' '.join(text.split())
 
 
 def tokenize_text_re(data, tokenizer):
