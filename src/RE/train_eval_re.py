@@ -105,7 +105,24 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     loss_weights_train = loss_weights_train * train_len / n
     loss_weights_val = loss_weights_val * val_len / n
     loss_weights = loss_weights_train + loss_weights_val
-    model = ReModel(model_name, input_size, loss_weights)
+    model.loss_weights = loss_weights
+    training_args = TrainingArguments(
+        output_dir="./RE/results",
+        num_train_epochs=1,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        gradient_accumulation_steps=4,
+        learning_rate=2e-4,
+        optim="adamw_torch",
+        logging_strategy="steps",
+        logging_steps=100,
+        save_strategy="steps",
+        logging_dir="./RE/logs",
+        logging_first_step=True,
+        push_to_hub=False,
+        seed=0,
+        data_seed=0,
+    )
     trainer = RETrainer(
         model=model,
         args=training_args,
@@ -113,5 +130,6 @@ def train_test_re(model_name, train_dataset, validation_dataset, input_size, bat
     )
     # Train the model
     trainer.train()
+    torch.save(model.state_dict(), './RE/model')
 
     return model
