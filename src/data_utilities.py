@@ -10,7 +10,6 @@ from sklearn.utils import class_weight
 def load_data():
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
-    dataframe = dataframe[:50]
     dataframe.drop(columns=['indexes'], inplace=True)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)
     dataframe.dropna(inplace=True)
