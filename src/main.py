@@ -147,6 +147,7 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
     else:
         data_re = pd.read_csv("../data/re.csv", converters={'annotated_text': literal_eval, 'pos_tags': literal_eval})
 
+    # we split row indexes for create the same dataset splitting for both NER and RE.
     indices = np.arange(len(data_ner))
     train_indices, test_indices = split_train_test(indices)
     val_indices, test_indices = split_test(test_indices)

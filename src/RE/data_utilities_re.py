@@ -11,6 +11,8 @@ def mask_texts(texts, drugs, effects, concatenation=False):
     annotations = []
     masked_texts = []
 
+    # Used to label a correlation between drug(s) and effect(s).
+    # for example a correlated drug and effect will have the same value (1,2,3 etc.).
     annotation = 1
 
     found_drugs = set()
@@ -34,6 +36,7 @@ def mask_texts(texts, drugs, effects, concatenation=False):
                 drug = drugs[idx]
                 drug = drug.split()
                 drug = drug[0]
+                # We store the effect with the same index of the associated drug.
                 effect_associations.setdefault(el, drug_associations[drug])
 
     found_drugs = set()
@@ -118,6 +121,7 @@ def prepare_data_for_re(data):
     drugs = data['drug'].values.tolist()
     data['effect'] = data['effect'].str.lower()
     effects = data['effect'].values.tolist()
+    # we mask texts individually, without concatenating.
     annotation, masked_texts = mask_texts(texts, drugs, effects, concatenation=False)
 
     data_re = pd.DataFrame()
@@ -126,6 +130,7 @@ def prepare_data_for_re(data):
 
     initial_size = len(data)
     np.random.seed(0)
+    # we concatenate the masked text
     add_concatenation(data, data_re, initial_size, 2)
     add_concatenation(data, data_re, initial_size, 3)
     add_concatenation(data, data_re, initial_size, 4)

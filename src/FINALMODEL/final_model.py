@@ -42,6 +42,7 @@ class FinalModel(torch.nn.Module):
         tokenizer = self.tokenizer
         id_label = self.id_label
 
+        # Replace the IOB-tags ids with O|DRUG|EFFECT ids
         batch_new_entities = []
         for entities in batch_entities:
             new_entities = []
@@ -58,10 +59,12 @@ class FinalModel(torch.nn.Module):
                     new_entities.append(new_label_id['EFFECT'])
             batch_new_entities.append(new_entities)
 
+        # Replace the BERT ids into tokens.
         batch_tokens = []
         for l in ids:
             batch_tokens.append(tokenizer.convert_ids_to_tokens(l))
 
+        # Discard special BERT tokens (CLS, SEP, PAD).
         for batch, tokens in enumerate(batch_tokens):
             indexes_to_remove = []
             for i, token in enumerate(tokens):
@@ -80,13 +83,17 @@ class FinalModel(torch.nn.Module):
                 elif new_id_label[entity] == 'EFFECT':
                     batch_tokens[batch][i] = 'EFFECT'
 
+        # Reconstruction of the entire word from subwords.
         batch_texts = []
         for batch, tokens in enumerate(batch_tokens):
             text = []
             new_token = ''
             de_append = False
             for i, token in enumerate(tokens):
+                # if the token is not a sub-token and the new token is not empty
+                # (means this is the first new word I'm analyzing)
                 if not token.startswith('##') and new_token != '':
+                    # if the new token is not a masked token, I append it in lower case
                     if new_token != 'DRUG' and new_token != 'EFFECT':
                         text.append(new_token.lower())
                         de_append = False

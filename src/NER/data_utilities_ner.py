@@ -95,6 +95,8 @@ def tokenize_text_ner(texts, labels, tokenizer):
     for text, text_labels in zip(texts, labels):
         tokenized_text = []
         tokenized_label = []
+        # We tokenize every single word in the sentence in order to get the number of subwords.
+        # The aim is to extend the labels to the number of subwords.
         for word, labels in zip(text.split(), text_labels.split()):
             tokenized_word = tokenizer.tokenize(word)
             n_subwords = len(tokenized_word)
@@ -135,6 +137,8 @@ def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_l
     for text, labels in zip(tokenized_texts, tokenized_labels):
         tokenized_text = ["[CLS]"] + text + ["[SEP]"]
         labels = copy.copy(labels)
+        # We do not label CLS and SEP tokens.
+        # We therefore add PAD in the labels related to the positions of these two special tokens.
         labels.insert(0, 'PAD')
         labels.insert(len(tokenized_text) - 1, 'PAD')
 
@@ -164,7 +168,7 @@ def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_l
     return ner_ids, ner_masks, ner_labels
 
 
-
+# concatenate texts based on the concatenation size (2, 3, or four sentences).
 def concatenate_texts(texts, concat_number):
     result = ''
     for i in range(concat_number):
@@ -173,6 +177,7 @@ def concatenate_texts(texts, concat_number):
     return result
 
 
+# concatenate drugs and effects based on the concatenation size (2, 3, or four sentences).
 def concatenate_drugs_effects(drugs, effects, concat_number):
     concatenated_drugs = []
     concatenated_effects = []
@@ -191,11 +196,16 @@ def convert_to_list(column, name):
 # This function is used to compute data augmentation for NER task.
 # Multiple texts will be concatenated to obtain texts with multiple drugs and effects.
 def prepare_data_for_ner(data):
+    # to sample indexes deterministically
     np.random.seed(0)
 
     new_data = copy.copy(data)
+
+    # conversion of drugs and effects into a list of drugs and effects in the dataframe
     convert_to_list(new_data['drug'].to_frame(), 'drug')
     convert_to_list(new_data['effect'].to_frame(), 'effect')
+
+    # select a proportion of sentences to be concatenated.
     concatenation_size = int(np.ceil(len(data) * 0.33))
 
     for concat_number in range(2, 5):

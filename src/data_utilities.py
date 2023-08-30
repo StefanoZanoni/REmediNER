@@ -32,6 +32,7 @@ def split_test(indices):
 
 # Dropping sentences with overlapping name in DRUG and EFFECT.
 def drop_incorrect_sentences(data):
+    # storing indexes (sentences) where overlapping occurs.
     find_double_index = list()
 
     for idx, item in data.iterrows():
@@ -42,6 +43,7 @@ def drop_incorrect_sentences(data):
                 if d == e:
                     find_double_index.append(idx)
 
+    # Dropping sentences based on the indexes.
     data.drop(index=find_double_index, inplace=True)
     data.reset_index(drop=True, inplace=True)
 
@@ -51,6 +53,9 @@ def pre_process_texts(data):
 
     drugs = data['drug'].unique().tolist()
     effects = data['effect'].unique().tolist()
+
+    # Creation of a list with all drugs and effects, ensuring their integrity during preprocessing.
+    # These terms will not be touched.
     exception_words = drugs + effects
 
     data['text'] = data['text'].str.strip()
@@ -69,12 +74,12 @@ def pre_process_texts(data):
     data['drug'] = data['drug'].str.replace("'", '', regex=True)
     data['effect'] = data['effect'].str.replace("'", '', regex=True)
 
-    # remove all '.', also at the end of phrase if the last word is a number
+    # remove all '.', also at the end of sentence if the last word is a number
     data['text'] = data['text'].str.replace(r'\.\s*$', '', regex=True)
     data['drug'] = data['drug'].str.replace(r'\.\s*$', '', regex=True)
     data['effect'] = data['effect'].str.replace(r'\.\s*$', '', regex=True)
 
-    # remove double space
+    # remove double space between words
     data['text'] = data['text'].str.replace(r'\s+', ' ', regex=True)
     data['drug'] = data['drug'].str.replace(r'\s+', ' ', regex=True)
     data['effect'] = data['effect'].str.replace(r'\s+', ' ', regex=True)
