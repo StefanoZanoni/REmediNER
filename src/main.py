@@ -11,10 +11,10 @@ from torch.utils.data import TensorDataset
 from transformers import BertTokenizerFast
 from torchsummary import summary
 
-from src.data_utilities import load_data, pre_process_texts, split_train_test, split_test
+from src.data_utilities import load_data, pre_process_texts, split_train_test, split_test, compute_weights
 
-from src.NER.data_utilities_ner import (compute_iob, get_labels_id, tokenize_text_ner,
-                                        get_ner_inputs, prepare_data_for_ner, compute_weights)
+from src.NER.data_utilities_ner import (compute_iob, get_labels_id, tokenize_text_ner, get_ner_inputs,
+                                        prepare_data_for_ner)
 from src.NER.train_eval_ner import train_test_ner
 from src.NER.ner_dataset import NERDataset
 

@@ -15,6 +15,8 @@ class FinalModel(torch.nn.Module):
 
     def forward(self, ids, mask, labels):
         device = ids.device
+
+        # NER computation
         ner_output = self.ner(ids, mask, None)
         ner_logits = ner_output['logits']
         entities = torch.argmax(ner_logits, dim=-1)
@@ -23,6 +25,8 @@ class FinalModel(torch.nn.Module):
         ids = ids.cpu()
         ids = ids.tolist()
         output_ner = self.__convert_output_to_masked_text(entities, ids)
+
+        # RE computation
         ids, mask = self.__prepare_re_inputs(output_ner)
         ids = ids.to(device)
         mask = mask.to(device)
@@ -67,6 +71,7 @@ class FinalModel(torch.nn.Module):
                 del batch_tokens[batch][index - i]
                 del batch_new_entities[batch][index - i]
 
+        # Replace the IOB-tags with O|DRUG|EFFECT
         for batch, tokens in enumerate(batch_tokens):
             for i, token in enumerate(tokens):
                 entity = batch_new_entities[batch][i]
@@ -85,13 +90,18 @@ class FinalModel(torch.nn.Module):
                     if new_token != 'DRUG' and new_token != 'EFFECT':
                         text.append(new_token.lower())
                         de_append = False
+                    # else a DRUG or an EFFECT will be appended as they were
                     else:
+                        # This check prevents multiple append of DRUG or EFFECT
+                        # if a drug or an effect were composed by multiple sub-tokens
                         if not de_append:
                             text.append(new_token)
                             de_append = True
                     new_token = ''
+                # if the current token is a drug or an effect, it remains unchanged
                 if token == 'DRUG' or token == 'EFFECT':
                     new_token = token
+                # It was found a sub-token. It will be concatenated to the new token
                 else:
                     new_token += token.replace('##', '')
 
@@ -107,6 +117,7 @@ class FinalModel(torch.nn.Module):
 
         return ids, masks
 
+    # this function is used to prepare input in BERT format
     def __get_re_inputs(self, batch_tokenized_texts):
         bert_ids = []
         bert_masks = []
@@ -136,17 +147,18 @@ class FinalModel(torch.nn.Module):
     def __tokenize_inputs_re(self, batch_texts):
         temp_tokenized_texts = []
 
+        # words tokenization
         for text in batch_texts:
             tokenized_text = []
             for word in text.split():
                 tokenized_word = self.tokenizer.tokenize(word)
-                n_subwords = len(tokenized_word)
                 tokenized_text.append(tokenized_word)
 
             temp_tokenized_texts.append(tokenized_text)
 
         tokenized_texts = []
 
+        # transform the list of lists of tokens into a list of tokens
         for text in temp_tokenized_texts:
             tokenized_text = []
             for word in text:

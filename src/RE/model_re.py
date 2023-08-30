@@ -4,11 +4,6 @@ from transformers import BertModel
 
 def model_bert(model_name):
     model = BertModel.from_pretrained(model_name)
-
-    # freeze bert parameters
-    # for param in model.parameters():
-    #     param.requires_grad = False
-
     return model
 
 
@@ -22,8 +17,10 @@ class ReModel(torch.nn.Module):
         self.loss_weights = loss_weights
         self.bert = model_bert(bert_name)
 
-        # Bi-directional LSTM
+        # ------- BERT HEAD ------- #
         self.dropout = torch.nn.Dropout(0.4)
+
+        # Bi-directional LSTM
         lstm_hidden_size = 128
         self.lstm = torch.nn.LSTM(input_size=self.hidden_size * 4, hidden_size=lstm_hidden_size, num_layers=1,
                                   batch_first=True, bidirectional=True)
@@ -35,18 +32,13 @@ class ReModel(torch.nn.Module):
 
         # Output layer
         self.final_linear = torch.nn.Linear(in_features=reduced_size, out_features=self.input_size * 5)
-
         self.gelu = torch.nn.GELU()
 
     def __bert_head(self, bert_output, effective_batch_size):
         bert_output = self.dropout(bert_output)
         bilstm_out = self.lstm(bert_output)[0]
         flatten_out = torch.nn.Flatten()(bilstm_out)
-
-        # Dimensionality reduction without pooling
         reduced_out = self.dim_reduction(flatten_out)
-
-        # Getting the final logits
         logits = self.final_linear(reduced_out)
         logits = self.gelu(logits)
         logits = torch.reshape(logits, shape=(effective_batch_size, self.input_size, 5))

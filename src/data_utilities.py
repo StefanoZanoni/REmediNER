@@ -1,13 +1,16 @@
 import ast
 import pandas as pd
+import numpy as np
 
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
+from sklearn.utils import class_weight
 
 
 def load_data():
     dataset = load_dataset("../ade_corpus_v2/ade_corpus_v2.py", 'Ade_corpus_v2_drug_ade_relation')
     dataframe = pd.DataFrame(dataset['train'])
+    dataframe = dataframe[:50]
     dataframe.drop(columns=['indexes'], inplace=True)
     dataframe.drop_duplicates(inplace=True, ignore_index=True)
     dataframe.dropna(inplace=True)
@@ -27,7 +30,7 @@ def split_test(indices):
     return val_indices, test_indices
 
 
-# dropping sentences with overlapping name in DRUG and EFFECT.
+# Dropping sentences with overlapping name in DRUG and EFFECT.
 def drop_incorrect_sentences(data):
     find_double_index = list()
 
@@ -92,3 +95,40 @@ def pre_process_texts(data):
     # lowercasing all drugs/effects
     data['drug'] = data['drug'].str.lower()
     data['effect'] = data['effect'].str.lower()
+
+
+def get_missed_class(classes):
+    missed_class = []
+    total_classes = list(range(5))
+
+    for el in total_classes:
+        if el not in classes:
+            missed_class.append(el)
+
+    return missed_class
+
+
+# We try to give more importance to the classes related to the entities and less importance
+# to the non-entity "O".
+def compute_weights(data):
+    class_weights = np.zeros(5)
+    for labels in data:
+        labels = np.delete(labels, np.where(labels == -100))
+        classes = np.unique(labels)
+        # There might be that not all the classes are present in all sentences.
+        # We also give those missed classes a weighted value.
+        missed_class = get_missed_class(classes)
+        weights = class_weight.compute_class_weight('balanced',
+                                                    classes=classes,
+                                                    y=labels)
+
+        if missed_class:
+            for missed in missed_class:
+                if missed < len(weights):
+                    weights = np.insert(weights, missed, np.max(weights) + np.mean(weights))
+                else:
+                    weights = np.append(weights, np.max(weights) + np.mean(weights))
+
+        class_weights += weights
+
+    return class_weights / len(data)

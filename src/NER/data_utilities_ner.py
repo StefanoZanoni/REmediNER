@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from nltk import TreebankWordTokenizer
 from sklearn.model_selection import train_test_split
-from sklearn.utils import class_weight
 
 
 def iob_tagging(text, drugs, effects, twt):
@@ -150,6 +149,8 @@ def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_l
 
         attention_mask = [1 if tok != '[PAD]' else 0 for tok in tokenized_text]
         ids = tokenizer.convert_tokens_to_ids(tokenized_text)
+        # We assign the value -100 in the labels that correspond to PAD
+        # in order to ignore these indexes during the loss computation
         label_ids = [label_id[label] if label != 'PAD' else -100 for label in labels]
 
         bert_ids.append(ids)
@@ -161,6 +162,7 @@ def get_ner_inputs(tokenized_texts, tokenized_labels, tokenizer, label_id, max_l
     ner_labels = torch.tensor(bert_labels, dtype=torch.long)
 
     return ner_ids, ner_masks, ner_labels
+
 
 
 def concatenate_texts(texts, concat_number):
@@ -190,10 +192,12 @@ def convert_to_list(column, name):
 # Multiple texts will be concatenated to obtain texts with multiple drugs and effects.
 def prepare_data_for_ner(data):
     np.random.seed(0)
+
     new_data = copy.copy(data)
     convert_to_list(new_data['drug'].to_frame(), 'drug')
     convert_to_list(new_data['effect'].to_frame(), 'effect')
     concatenation_size = int(np.ceil(len(data) * 0.33))
+
     for concat_number in range(2, 5):
         for i in range(concatenation_size):
             random_row_indexes = [np.random.randint(low=0, high=len(data)) for _ in range(concat_number)]
@@ -211,36 +215,3 @@ def prepare_data_for_ner(data):
 
 def remove_double_spaces(text):
     return ' '.join(text.split())
-
-
-def get_missed_class(classes):
-    missed_class = []
-    total_classes = list(range(5))
-
-    for el in total_classes:
-        if el not in classes:
-            missed_class.append(el)
-
-    return missed_class
-
-
-def compute_weights(data):
-    class_weights = np.zeros(5)
-    for labels in data:
-        labels = np.delete(labels, np.where(labels == -100))
-        classes = np.unique(labels)
-        missed_class = get_missed_class(classes)
-        weights = class_weight.compute_class_weight('balanced',
-                                                    classes=classes,
-                                                    y=labels)
-
-        if missed_class:
-            for missed in missed_class:
-                if missed < len(weights):
-                    weights = np.insert(weights, missed, np.max(weights) + np.mean(weights))
-                else:
-                    weights = np.append(weights, np.max(weights) + np.mean(weights))
-
-        class_weights += weights
-
-    return class_weights / len(data)

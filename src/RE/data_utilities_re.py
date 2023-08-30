@@ -12,8 +12,13 @@ def mask_texts(texts, drugs, effects, concatenation=False):
     masked_texts = []
 
     annotation = 1
-    founded_drugs = set()
-    founded_effects = set()
+
+    found_drugs = set()
+    found_effects = set()
+
+    # If a text is concatenated, there could be the presence of a drug with multiple effects and vice-versa.
+    # We have to ensure to associate them with the same index.
+    # We therefore create two dictionaries that associate the drugs and effects with their index.
     if concatenation:
         drug_associations = {}
         effect_associations = {}
@@ -21,43 +26,55 @@ def mask_texts(texts, drugs, effects, concatenation=False):
             drug = drug.split()
             effect = effect.split()
             for el in drug:
-                founded_drugs.add(el)
+                found_drugs.add(el)
+                # The index (idx) must be != 0. Zero is associated with words that are neither drugs nor effects.
                 drug_associations.setdefault(el, idx + 1)
             for el in effect:
-                founded_effects.add(el)
+                found_effects.add(el)
                 drug = drugs[idx]
                 drug = drug.split()
                 drug = drug[0]
                 effect_associations.setdefault(el, drug_associations[drug])
 
-    founded_drugs = set()
-    founded_effects = set()
+    found_drugs = set()
+    found_effects = set()
     for text, drug, effect in zip(texts, drugs, effects):
-        masking = []
+        associations = []
         new_sent = []
         sent = text.split()
         drug = drug.split()
         effect = effect.split()
-        for idx, w in enumerate(sent):
+        for w in sent:
             if w in drug:
-                if "DRUG" not in new_sent and w not in founded_drugs:
+                # The idea is to maintain only one mask even though the drug is present multiple times.
+                if w in found_drugs:
+                    new_sent.append(w)
+                    associations.append(0)
+                # If the mask DRUG is already present in the masked sentence, it will be ignored.
+                # Drugs with multiple words will be represented with just one mask (in this case DRUG).
+                elif "DRUG" not in new_sent:
                     new_sent.append("DRUG")
                     if concatenation:
-                        masking.append(drug_associations[w])
+                        associations.append(drug_associations[w])
                     else:
-                        masking.append(annotation)
+                        associations.append(annotation)
+                found_drugs.add(w)
             elif w in effect:
-                if "EFFECT" not in new_sent and w not in founded_effects:
+                if w in found_effects:
+                    new_sent.append(w)
+                    associations.append(0)
+                elif "EFFECT" not in new_sent:
                     new_sent.append("EFFECT")
                     if concatenation:
-                        masking.append(effect_associations[w])
+                        associations.append(effect_associations[w])
                     else:
-                        masking.append(annotation)
+                        associations.append(annotation)
+                found_effects.add(w)
             else:
                 new_sent.append(w)
-                masking.append(0)
+                associations.append(0)
 
-        annotations.append(masking)  # Sentences in str with annotation DRUG-EFFECT
+        annotations.append(associations)  # Sentences in str with annotation DRUG-EFFECT
         masked_texts.append(" ".join(new_sent))  # Masked sentences
 
     return annotations, masked_texts
@@ -121,6 +138,8 @@ def remove_double_spaces(text):
     return ' '.join(text.split())
 
 
+# this function is used to tokenize the text according to the bert tokenizer
+# and duplicate the annotations for the sub-tokens
 def tokenize_text_re(data, tokenizer):
     texts = data['masked_text'].to_list()
     texts_annotations = data['annotated_text'].to_list()
@@ -128,9 +147,12 @@ def tokenize_text_re(data, tokenizer):
     temp_tokenized_texts = []
     temp_tokenized_annotations = []
 
+    # tokenize text and annotations
     for text, annotations in zip(texts, texts_annotations):
         tokenized_text = []
         tokenized_annotation = []
+        # We tokenize every single word in the sentence in order to get the number of subwords.
+        # The aim is to extend the annotations to the number of subwords.
         for word, annotation in zip(text.split(), annotations):
             tokenized_word = tokenizer.tokenize(word)
             n_subwords = len(tokenized_word)
@@ -143,6 +165,7 @@ def tokenize_text_re(data, tokenizer):
     tokenized_texts = []
     tokenized_annotations = []
 
+    # transform the list of lists of tokens into a list of tokens
     for text in temp_tokenized_texts:
         tokenized_text = []
         for word in text:
@@ -150,6 +173,7 @@ def tokenize_text_re(data, tokenizer):
                 tokenized_text.append(token)
         tokenized_texts.append(tokenized_text)
 
+    # transform the list of lists of tokens into a list of tokens
     for annotations in temp_tokenized_annotations:
         tokenized_annotation = []
         for annotation in annotations:
@@ -160,6 +184,7 @@ def tokenize_text_re(data, tokenizer):
     return tokenized_texts, tokenized_annotations
 
 
+# this function is used to prepare input in BERT format
 def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
     bert_ids = []
     bert_annotations = []
@@ -168,6 +193,8 @@ def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
     for text, annotation in zip(tokenized_texts, tokenized_annotations):
         tokenized_text = ["[CLS]"] + text + ["[SEP]"]
         annotation = copy.copy(annotation)
+        # We do not label CLS and SEP tokens.
+        # We therefore add PAD in the annotations related to the positions of these two special tokens.
         annotation.insert(0, -100)
         annotation.insert(len(tokenized_text) - 1, -100)
 
@@ -182,6 +209,8 @@ def get_re_inputs(tokenized_texts, tokenized_annotations, tokenizer, max_len):
 
         attention_mask = [1 if tok != '[PAD]' else 0 for tok in tokenized_text]
         ids = tokenizer.convert_tokens_to_ids(tokenized_text)
+        # We assign the value -100 in the annotations that correspond to PAD
+        # in order to ignore these indexes during the loss computation
         annotation = [el if el != 'PAD' else -100 for el in annotation]
 
         bert_ids.append(ids)

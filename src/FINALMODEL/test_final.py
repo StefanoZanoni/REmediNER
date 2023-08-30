@@ -7,6 +7,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 import numpy as np
 
 
+# Custom compute metrics function. Used metrics are precision, recall and F1 score.
 def compute_metrics(p: 'EvalPrediction'):
     # Flatten the predictions and labels to 1D arrays
     preds_flat = np.argmax(p.predictions, axis=-1).flatten()
@@ -33,7 +34,7 @@ def test_final(ner_model, re_model, test_dataset, tokenizer_ner, id_label, re_in
     model = FinalModel(ner_model, re_model, tokenizer_ner, id_label, re_input_length)
 
     training_args = TrainingArguments(
-        output_dir="./FINALMODEL/results",
+        output_dir="../results/FINAL_results",
         per_device_eval_batch_size=batch_size,
         seed=0,
         data_seed=0,

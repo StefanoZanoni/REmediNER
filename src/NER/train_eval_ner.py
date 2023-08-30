@@ -10,6 +10,8 @@ import numpy as np
 from src.plot import plot_heat_map
 
 
+# Extension of Trainer class from HuggingFace to re-define loss computation
+# to take into account the weights and to ignore the padding
 class NERTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         labels = inputs.get("labels")
@@ -29,6 +31,7 @@ class NERTrainer(Trainer):
         return (loss, outputs) if return_outputs else loss
 
 
+# Custom compute metrics function. Used metrics are precision, recall and F1 score.
 def compute_metrics(p: 'EvalPrediction'):
     # Flatten the predictions and labels to 1D arrays
     preds_flat = np.argmax(p.predictions, axis=-1).flatten()
@@ -53,6 +56,8 @@ def compute_metrics(p: 'EvalPrediction'):
     }
 
 
+# This function is used to train and evaluate the NER model.
+# The training is done with the Trainer class from HuggingFace
 def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, batch_size, epochs,
                    loss_weights_train, loss_weights_val):
 
@@ -60,13 +65,13 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     id_label = bert_model['id_label']
     label_id = bert_model['label_id']
     model = NerModel(model_name, input_size, id_label, label_id, loss_weights_train)
-    if os.path.exists('./NER/model'):
-        model.load_state_dict(torch.load('./NER/model'))
+    if os.path.exists('../models/NER_model'):
+        model.load_state_dict(torch.load('../models/NER_model'))
         return model
 
     # Define training arguments
     training_args = TrainingArguments(
-        output_dir="./NER/results",
+        output_dir="../results/NER_results",
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
@@ -76,7 +81,7 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         logging_strategy="steps",
         logging_steps=100,
         save_strategy="steps",
-        logging_dir="./NER/logs",
+        logging_dir="../logs/NER_logs",
         logging_first_step=True,
         push_to_hub=False,
         seed=0,
@@ -106,8 +111,10 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     print(f"Validation F1 Score: {val_f1}")
     plot_heat_map(val_confusion_matrix, 'Validation confusion matrix')
 
-    # re-train on the whole dataset
+    # re-train on the whole dataset for one epoch
     train_val_dataset = torch.utils.data.ConcatDataset([train_dataset, validation_dataset])
+
+    # re-compute the weights adding the contribution of validation weights
     n = len(train_val_dataset)
     train_len = len(train_dataset)
     val_len = len(validation_dataset)
@@ -115,8 +122,9 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
     loss_weights_val = loss_weights_val * val_len / n
     loss_weights = loss_weights_train + loss_weights_val
     model.loss_weights = loss_weights
+
     training_args = TrainingArguments(
-        output_dir="./RE/results",
+        output_dir="../results/NER_results",
         num_train_epochs=1,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
@@ -126,7 +134,7 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         logging_strategy="steps",
         logging_steps=100,
         save_strategy="steps",
-        logging_dir="./RE/logs",
+        logging_dir="../logs/NER_logs",
         logging_first_step=True,
         push_to_hub=False,
         seed=0,
@@ -137,8 +145,12 @@ def train_test_ner(bert_model, train_dataset, validation_dataset, input_size, ba
         args=training_args,
         train_dataset=train_val_dataset,
     )
+
     # Train the model
     trainer.train()
-    torch.save(model.state_dict(), './NER/model')
+
+    if not os.path.exists('../models'):
+        os.makedirs('../models', exist_ok=True)
+    torch.save(model.state_dict(), '../models/NER_model')
 
     return model
