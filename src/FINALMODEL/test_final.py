@@ -98,5 +98,6 @@ def test_final(ner_model, re_model, ner_ids, ner_masks, re_annotations,
 def write_list_to_file(filename, data_list):
     with open(filename, 'w') as file:
         for sublist in data_list:
-            line = ' '.join(map(str, sublist))  # Join sublist elements into a space-separated string
+            # Join sublist elements into a space-separated string
+            line = ' '.join(map(str, sublist))
             file.write(line + '\n')
