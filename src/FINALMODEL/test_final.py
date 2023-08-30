@@ -58,6 +58,9 @@ def test_final(ner_model, re_model, ner_ids, ner_masks, re_annotations,
         compute_metrics=compute_metrics,
     )
 
+    if not os.path.exists('../final predictions'):
+        os.makedirs('../final predictions', exist_ok=True)
+
     # show predictions
     num_gpus = torch.cuda.device_count()
     if num_gpus > 1:
@@ -69,11 +72,27 @@ def test_final(ner_model, re_model, ner_ids, ner_masks, re_annotations,
         ner_masks = ner_masks.to("cuda:0")
         re_annotations = re_annotations.to("cuda:0")
 
-    final_logits = model(ner_ids, ner_masks, re_annotations)['logits']
-    final_outputs = torch.argmax(final_logits, dim=-1).tolist()
-    if not os.path.exists('../final predictions'):
-        os.makedirs('../final predictions', exist_ok=True)
-    write_list_to_file('../final predictions/final_predictions.txt', final_outputs)
+        num_instances = len(ner_ids)
+        num_batches = (num_instances + batch_size - 1) // batch_size
+
+        # Prepare for batch predictions
+        batch_outputs = []
+
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, num_instances)
+
+            batch_ner_ids = ner_ids[start_idx:end_idx]
+            batch_ner_masks = ner_masks[start_idx:end_idx]
+            batch_re_annotations = re_annotations[start_idx:end_idx]
+
+            # Perform batch predictions
+            batch_logits = model(batch_ner_ids, batch_ner_masks, batch_re_annotations)['logits']
+            batch_predictions = torch.argmax(batch_logits, dim=-1).tolist()
+
+            batch_outputs.extend(batch_predictions)
+
+        write_list_to_file('../final predictions/final_predictions.txt', batch_outputs)
 
 
 def write_list_to_file(filename, data_list):
