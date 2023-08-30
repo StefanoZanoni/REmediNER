@@ -1,10 +1,12 @@
+import os
 import torch
+import numpy as np
 
 from transformers import Trainer, TrainingArguments
-from src.FINALMODEL.final_model import FinalModel
-
 from sklearn.metrics import f1_score, precision_score, recall_score
-import numpy as np
+
+from src.FINALMODEL.final_model import FinalModel
+from src.FINALMODEL.final_dataset import FinalDataset
 
 
 # Custom compute metrics function. Used metrics are precision, recall and F1 score.
@@ -30,8 +32,18 @@ def compute_metrics(p: 'EvalPrediction'):
     }
 
 
-def test_final(ner_model, re_model, test_dataset, tokenizer_ner, id_label, re_input_length, batch_size):
+def test_final(ner_model, re_model, ner_ids, ner_masks, re_annotations,
+               tokenizer_ner, id_label, re_input_length, batch_size):
+
+    test_dataset = FinalDataset(ner_ids, ner_masks, re_annotations)
     model = FinalModel(ner_model, re_model, tokenizer_ner, id_label, re_input_length)
+
+    if os.path.exists('../models/FINAL_model'):
+        model.load_state_dict(torch.load('../models/FINAL_model'))
+
+    if not os.path.exists('../models'):
+        os.makedirs('../models', exist_ok=True)
+    torch.save(model.state_dict(), '../models/FINAL_model')
 
     training_args = TrainingArguments(
         output_dir="../results/FINAL_results",
@@ -46,14 +58,26 @@ def test_final(ner_model, re_model, test_dataset, tokenizer_ner, id_label, re_in
         compute_metrics=compute_metrics,
     )
 
-    # test performance
-    results = trainer.evaluate(test_dataset)
-    test_precision = results['eval_precision']
-    test_recall = results['eval_recall']
-    test_f1 = results['eval_f1']
+    # show predictions
+    num_gpus = torch.cuda.device_count()
+    if num_gpus > 1:
+        ner_ids = [ner_ids.to(f"cuda:{i}") for i in range(num_gpus)]
+        ner_masks = [ner_masks.to(f"cuda:{i}") for i in range(num_gpus)]
+        re_annotations = [re_annotations.to(f"cuda:{i}") for i in range(num_gpus)]
+    else:
+        ner_ids = ner_ids.to("cuda:0")
+        ner_masks = ner_masks.to("cuda:0")
+        re_annotations = re_annotations.to("cuda:0")
 
-    print(f"Final Precision: {test_precision}")
-    print(f"Final Recall: {test_recall}")
-    print(f"Final F1 Score: {test_f1}")
+    final_logits = model(ner_ids, ner_masks, re_annotations)['logits']
+    final_outputs = torch.argmax(final_logits, dim=-1).tolist()
+    if not os.path.exists('../final predictions'):
+        os.makedirs('../final predictions', exist_ok=True)
+    write_list_to_file('../final predictions/final_predictions.txt', final_outputs)
 
-    return model
+
+def write_list_to_file(filename, data_list):
+    with open(filename, 'w') as file:
+        for sublist in data_list:
+            line = ' '.join(map(str, sublist))  # Join sublist elements into a space-separated string
+            file.write(line + '\n')

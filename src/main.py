@@ -22,9 +22,7 @@ from src.RE.data_utilities_re import prepare_data_for_re, tokenize_text_re, get_
 from src.RE.re_dataset import REDataset
 from src.RE.train_eval_re import train_test_re
 
-from src.FINALMODEL.final_model import FinalModel
 from src.FINALMODEL.test_final import test_final
-from src.FINALMODEL.final_dataset import FinalDataset
 
 
 bert_name_ner = 'bert-base-cased'
@@ -161,8 +159,8 @@ def main(epochs=10, batch_size=32, ner_input_length=128, re_input_length=128):
                                         train_indices, val_indices, test_indices)
 
     # test the final model
-    final_dataset = FinalDataset(ner_ids, ner_masks, re_annotations)
-    test_final(ner_model, re_model, final_dataset, tokenizer_ner, id_label, re_input_length, batch_size)
+    test_final(ner_model, re_model, ner_ids, ner_masks, re_annotations,
+               tokenizer_ner, id_label, re_input_length, batch_size)
 
 
 if __name__ == '__main__':
